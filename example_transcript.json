@@ -1,0 +1,26 @@
+{
+    "video_id": "test-video-001",
+    "title": "Test Training Video",
+    "duration_seconds": 30,
+    "transcribed_at": "2026-06-02 12:00:00",
+    "segments": [
+        {
+            "segment_id": "1",
+            "start_time": 0.0,
+            "end_time": 10.0,
+            "text": "This is the first segment of the test training video."
+        },
+        {
+            "segment_id": "2",
+            "start_time": 10.0,
+            "end_time": 20.0,
+            "text": "This is the second segment of the test training video."
+        },
+        {
+            "segment_id": "3",
+            "start_time": 20.0,
+            "end_time": 30.0,
+            "text": "This is the third segment of the test training video."
+        }
+    ]
+}
