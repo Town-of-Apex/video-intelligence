@@ -1,0 +1,21 @@
+{
+  "video_id": "test-video-001",
+  "title": "Test Training Video",
+  "duration_seconds": 30,
+  "transcribed_at": "2026-06-02T12:00:00",
+  "chunk_count": 1,
+  "chunks": [
+    {
+      "chunk_id": 1,
+      "start_time": 0.0,
+      "end_time": 30.0,
+      "segment_ids": [
+        1,
+        2,
+        3
+      ],
+      "text": "This is the first segment of the test training video. This is the second segment of the test training video. This is the third segment of the test training video.",
+      "word_count": 30
+    }
+  ]
+}
