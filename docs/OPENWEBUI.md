@@ -20,12 +20,13 @@ docker compose -f docker_compose.yml up -d
 
 Schema is applied on first boot via `schema.sql` mounted into `docker-entrypoint-initdb.d`.
 
-## 2. Ingest chunks
+## 2. Process videos and ingest chunks
 
 ```bash
 uv sync
-uv run python embed.py
-uv run python database.py ingest emergency_contact_audio_chunks.json
+# Place .webm files in videos/unprocessed/, then run the full pipeline:
+uv run python main.py
+uv run python database.py ingest transcriptions/embeddings/*_chunks.json
 ```
 
 ## 3. Test retrieval (citations include timestamps)

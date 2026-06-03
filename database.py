@@ -214,7 +214,7 @@ def build_parser() -> argparse.ArgumentParser:
         "paths",
         nargs="+",
         type=Path,
-        help="Chunk JSON files (e.g. emergency_contact_audio_chunks.json)",
+        help="Embedded chunk JSON files (e.g. transcriptions/embeddings/my_video_chunks.json)",
     )
 
     search_parser = subparsers.add_parser("search", help="Semantic search with timestamp citations")

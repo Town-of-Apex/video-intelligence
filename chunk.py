@@ -102,15 +102,27 @@ def chunkify_transcript(transcript):
     return chunks, metadata
 
 
-def main(segments_json):
-    output_suffix = "chunks"
-    output_json = f"{segments_json.replace('_transcript.json', '')}_{output_suffix}.json"
-    transcript = load_transcript(segments_json)
-    chunks, metadata = chunkify_transcript(transcript)
-    print(f"Output JSON will go to: {output_json}")
-    save_chunks(chunks, output_json, metadata)
+def stem_from_transcript_path(transcript_path: Path) -> str:
+    stem = transcript_path.stem
+    if stem.endswith("_transcript"):
+        return stem[: -len("_transcript")]
+    return stem
 
-    print(f"Created {len(chunks)} chunks -> {output_json}")
+
+def main(transcript_path: str | Path, output_path: str | Path | None = None) -> Path:
+    transcript_path = Path(transcript_path)
+    if output_path is None:
+        from paths import embeddings_path
+
+        output_path = embeddings_path(stem_from_transcript_path(transcript_path))
+    else:
+        output_path = Path(output_path)
+
+    transcript = load_transcript(transcript_path)
+    chunks, metadata = chunkify_transcript(transcript)
+    saved = save_chunks(chunks, output_path, metadata)
+
+    print(f"Created {len(chunks)} chunks -> {saved}")
     for chunk in chunks:
         print(
             f"  chunk {chunk['chunk_id']}: "
@@ -118,8 +130,30 @@ def main(segments_json):
             f"{chunk['word_count']} words, "
             f"segments {chunk['segment_ids']}"
         )
+    return saved
 
 
 if __name__ == "__main__":
-    segments_json = "emergency_contact_audio_transcript.json"
-    main(segments_json)
+    import argparse
+
+    from paths import TRANSCRIPTS_DIR, ensure_media_dirs
+
+    parser = argparse.ArgumentParser(description="Chunk a transcript JSON file.")
+    parser.add_argument(
+        "transcript",
+        nargs="?",
+        type=Path,
+        help="Transcript JSON (default: first *_transcript.json in transcriptions/transcripts/)",
+    )
+    parser.add_argument("--output", type=Path, help="Chunk JSON path (before embeddings)")
+    args = parser.parse_args()
+
+    ensure_media_dirs()
+    transcript = args.transcript
+    if transcript is None:
+        candidates = sorted(TRANSCRIPTS_DIR.glob("*_transcript.json"))
+        if not candidates:
+            parser.error(f"No transcript files found in {TRANSCRIPTS_DIR}")
+        transcript = candidates[0]
+
+    main(transcript, args.output)

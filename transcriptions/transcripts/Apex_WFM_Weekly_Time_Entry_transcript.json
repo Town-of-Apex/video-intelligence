@@ -1,0 +1,338 @@
+{
+  "video_id": "Apex_WFM_Weekly_Time_Entry",
+  "title": "Apex Wfm Weekly Time Entry",
+  "duration_seconds": 268.05,
+  "transcribed_at": "2026-06-03T19:55:02+00:00",
+  "segments": [
+    {
+      "segment_id": 1,
+      "start_time": 0.0,
+      "end_time": 5.86,
+      "text": "Hello and welcome to the demonstration on how to use the Infra Workforce Management module"
+    },
+    {
+      "segment_id": 2,
+      "start_time": 5.86,
+      "end_time": 8.94,
+      "text": "to enter weekly timesheet."
+    },
+    {
+      "segment_id": 3,
+      "start_time": 8.94,
+      "end_time": 13.74,
+      "text": "Once logged into the Infra WIPM application, you will access your timesheet by clicking"
+    },
+    {
+      "segment_id": 4,
+      "start_time": 13.74,
+      "end_time": 17.74,
+      "text": "by timesheet in the header bar."
+    },
+    {
+      "segment_id": 5,
+      "start_time": 17.74,
+      "end_time": 21.26,
+      "text": "This will display your timesheet for the current week."
+    },
+    {
+      "segment_id": 6,
+      "start_time": 21.26,
+      "end_time": 28.14,
+      "text": "If a different week is desired, you can use the navigation arrows to go forward or backwards"
+    },
+    {
+      "segment_id": 7,
+      "start_time": 28.14,
+      "end_time": 30.08,
+      "text": "to the appropriate week."
+    },
+    {
+      "segment_id": 8,
+      "start_time": 30.08,
+      "end_time": 35.52,
+      "text": "Optionally, you can use the calendar lookup to select a specific date or a week."
+    },
+    {
+      "segment_id": 9,
+      "start_time": 35.52,
+      "end_time": 38.28,
+      "text": "Do begin entering your timesheet."
+    },
+    {
+      "segment_id": 10,
+      "start_time": 38.28,
+      "end_time": 43.72,
+      "text": "You will come down to the time code section and make the appropriate time code selection."
+    },
+    {
+      "segment_id": 11,
+      "start_time": 43.72,
+      "end_time": 48.2,
+      "text": "The list of time codes that is returned to the user are time codes that are applicable"
+    },
+    {
+      "segment_id": 12,
+      "start_time": 48.2,
+      "end_time": 52.52,
+      "text": "to that particular employees' work area."
+    },
+    {
+      "segment_id": 13,
+      "start_time": 52.52,
+      "end_time": 56.08,
+      "text": "Regular work will be defaulted at the top of the list as this will be the most common"
+    },
+    {
+      "segment_id": 14,
+      "start_time": 56.08,
+      "end_time": 57.08,
+      "text": "time code."
+    },
+    {
+      "segment_id": 15,
+      "start_time": 57.08,
+      "end_time": 62.2,
+      "text": "However, there are other time codes that can be used to indicate what type of work"
+    },
+    {
+      "segment_id": 16,
+      "start_time": 62.2,
+      "end_time": 64.8,
+      "text": "if it is not at your work."
+    },
+    {
+      "segment_id": 17,
+      "start_time": 64.8,
+      "end_time": 70.08,
+      "text": "You can also enter absences directly on a timesheet in lieu of following the time off"
+    },
+    {
+      "segment_id": 18,
+      "start_time": 70.08,
+      "end_time": 72.28,
+      "text": "process."
+    },
+    {
+      "segment_id": 19,
+      "start_time": 72.28,
+      "end_time": 79.72,
+      "text": "In this example, I will select work and you'll scroll to the right and in the date entry"
+    },
+    {
+      "segment_id": 20,
+      "start_time": 79.72,
+      "end_time": 86.2,
+      "text": "boxes you'll indicate in decimal format the amount of hours worked in that particular"
+    },
+    {
+      "segment_id": 21,
+      "start_time": 86.2,
+      "end_time": 91.64,
+      "text": "time code by day."
+    },
+    {
+      "segment_id": 22,
+      "start_time": 91.64,
+      "end_time": 97.04,
+      "text": "There is a job selection box that allows employees that have multiple work assignments to"
+    },
+    {
+      "segment_id": 23,
+      "start_time": 97.04,
+      "end_time": 101.92,
+      "text": "make a selection on which job the hours were worked in."
+    },
+    {
+      "segment_id": 24,
+      "start_time": 101.92,
+      "end_time": 107.68,
+      "text": "If an employee only has one job assignment, a job selection is not necessary as it will"
+    },
+    {
+      "segment_id": 25,
+      "start_time": 107.68,
+      "end_time": 112.36,
+      "text": "default if an employee's primary job."
+    },
+    {
+      "segment_id": 26,
+      "start_time": 112.36,
+      "end_time": 121.0,
+      "text": "Optionally, comments can be added by day by quick in the add comments link."
+    },
+    {
+      "segment_id": 27,
+      "start_time": 121.0,
+      "end_time": 128.0,
+      "text": "Once the time sheet is ready to be submitted, quick the save button."
+    },
+    {
+      "segment_id": 28,
+      "start_time": 128.0,
+      "end_time": 132.2,
+      "text": "If time has been entered on a given day, you'll notice that the approval checkbox has"
+    },
+    {
+      "segment_id": 29,
+      "start_time": 132.2,
+      "end_time": 137.28,
+      "text": "been unmarked indicating it is currently waiting time sheet approval from a manager or"
+    },
+    {
+      "segment_id": 30,
+      "start_time": 137.28,
+      "end_time": 140.68,
+      "text": "authorized personnel."
+    },
+    {
+      "segment_id": 31,
+      "start_time": 140.68,
+      "end_time": 147.8,
+      "text": "The calculated summary displays, what this is is it takes the time entered by the employee,"
+    },
+    {
+      "segment_id": 32,
+      "start_time": 147.8,
+      "end_time": 152.44,
+      "text": "puts it through the in for WFM rule engine and calculates how the employee should be paid"
+    },
+    {
+      "segment_id": 33,
+      "start_time": 152.44,
+      "end_time": 154.36,
+      "text": "for the hours entered."
+    },
+    {
+      "segment_id": 34,
+      "start_time": 154.36,
+      "end_time": 158.52,
+      "text": "In this case, we just have a standard 40 hour work week."
+    },
+    {
+      "segment_id": 35,
+      "start_time": 158.52,
+      "end_time": 164.56,
+      "text": "We set functionality exists on the time sheet to allow users to fill out time sheets in"
+    },
+    {
+      "segment_id": 36,
+      "start_time": 164.56,
+      "end_time": 167.76,
+      "text": "a more expeditious manner."
+    },
+    {
+      "segment_id": 37,
+      "start_time": 167.76,
+      "end_time": 171.8,
+      "text": "You can populate the time sheet as the same as last week, where you can save the time"
+    },
+    {
+      "segment_id": 38,
+      "start_time": 171.8,
+      "end_time": 173.44,
+      "text": "as a preset."
+    },
+    {
+      "segment_id": 39,
+      "start_time": 173.44,
+      "end_time": 185.44,
+      "text": "I'll go ahead and save this time sheet as a standard work week preset."
+    },
+    {
+      "segment_id": 40,
+      "start_time": 185.44,
+      "end_time": 194.64,
+      "text": "Advancing forward to the next week, I can now use that preset that I've just saved."
+    },
+    {
+      "segment_id": 41,
+      "start_time": 194.64,
+      "end_time": 203.28,
+      "text": "You'll see the time sheet is automatically populated based on the settings in that preset."
+    },
+    {
+      "segment_id": 42,
+      "start_time": 203.28,
+      "end_time": 208.08,
+      "text": "At any point in a way can go back to their time sheet in the current paper to add additional"
+    },
+    {
+      "segment_id": 43,
+      "start_time": 208.08,
+      "end_time": 209.08,
+      "text": "hours."
+    },
+    {
+      "segment_id": 44,
+      "start_time": 209.08,
+      "end_time": 212.88,
+      "text": "I'll do that now."
+    },
+    {
+      "segment_id": 45,
+      "start_time": 212.88,
+      "end_time": 217.04,
+      "text": "Adding an additional hour for Friday."
+    },
+    {
+      "segment_id": 46,
+      "start_time": 217.04,
+      "end_time": 222.64,
+      "text": "Once I click save, I can see that additional hour in the calculated summary as calm."
+    },
+    {
+      "segment_id": 47,
+      "start_time": 223.64,
+      "end_time": 226.56,
+      "text": "It defaults a comp."
+    },
+    {
+      "segment_id": 48,
+      "start_time": 226.56,
+      "end_time": 232.0,
+      "text": "However, an employee can use the comp override functionality to elect to be paid directly"
+    },
+    {
+      "segment_id": 49,
+      "start_time": 232.0,
+      "end_time": 233.0,
+      "text": "for that hour."
+    },
+    {
+      "segment_id": 50,
+      "start_time": 233.0,
+      "end_time": 240.16,
+      "text": "Indicate the amount of hours you'd like to override and click save."
+    },
+    {
+      "segment_id": 51,
+      "start_time": 240.16,
+      "end_time": 245.2,
+      "text": "And you'll now notice in the calculate summary that the regular work performed with an"
+    },
+    {
+      "segment_id": 52,
+      "start_time": 245.2,
+      "end_time": 252.92,
+      "text": "hour type of OT1.5 will be paid out to the employee rather than being comped."
+    },
+    {
+      "segment_id": 53,
+      "start_time": 252.92,
+      "end_time": 262.56,
+      "text": "Optionally print functionality is available to print time sheets as needed."
+    },
+    {
+      "segment_id": 54,
+      "start_time": 262.56,
+      "end_time": 266.2,
+      "text": "And that is the conclusion of our time sheet demo."
+    },
+    {
+      "segment_id": 55,
+      "start_time": 266.2,
+      "end_time": 267.4,
+      "text": "Thank you."
+    }
+  ]
+}

@@ -95,21 +95,56 @@ def main(
         video_id=video_id or audio_path.stem,
         title=title or default_title(audio_path),
     )
-    output_path = output_path or audio_path.with_name(f"{audio_path.stem}_transcript.json")
+    from paths import transcript_path as default_transcript_path
+
+    output_path = output_path or default_transcript_path(audio_path.stem)
 
     display_summary(segments, info)
     display_transcript(segments)
-    save_transcript(payload, output_path)
-    print(f"Saved transcript -> {output_path}")
-    return info
+    saved = save_transcript(payload, output_path)
+    print(f"Saved transcript -> {saved}")
+    return payload, saved
 
 
 if __name__ == "__main__":
-    model_size = "tiny.en"
-    audio_path = Path("emergency_contact_audio.mp3")
+    import argparse
+
+    from paths import audio_path as default_audio_path, ensure_media_dirs
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "audio",
+        nargs="?",
+        type=Path,
+        help="Audio file (default: first .mp3 in audio/)",
+    )
+    parser.add_argument("--model-size", default="tiny.en", help="Whisper model size")
+    parser.add_argument("--video-id", help="Override video_id in transcript JSON")
+    parser.add_argument("--title", help="Override title in transcript JSON")
+    parser.add_argument("--output", type=Path, help="Transcript JSON path")
+    args = parser.parse_args()
+
+    ensure_media_dirs()
+    audio = args.audio
+    if audio is None:
+        from paths import AUDIO_DIR
+
+        candidates = sorted(AUDIO_DIR.glob("*.mp3"))
+        if not candidates:
+            parser.error(f"No .mp3 files found in {AUDIO_DIR}")
+        audio = candidates[0]
 
     start_time = time.perf_counter()
-    info = main(model_size, audio_path)
+    payload, saved = main(
+        args.model_size,
+        audio,
+        video_id=args.video_id,
+        title=args.title,
+        output_path=args.output,
+    )
     elapsed = time.perf_counter() - start_time
     print(f"Time taken: {elapsed:.2f} seconds")
-    print(f"Speed: {info.duration / elapsed:.2f} file-seconds processed per second")
+    print(f"Saved -> {saved}")
+    duration = payload.get("duration_seconds") or 0
+    if elapsed > 0 and duration:
+        print(f"Speed: {duration / elapsed:.2f} file-seconds processed per second")
