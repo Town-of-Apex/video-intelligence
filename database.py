@@ -13,8 +13,10 @@ import psycopg
 from pgvector.psycopg import register_vector
 
 from embed import generate_embedding
+from paths import EMBEDDINGS_DIR
 
 EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
+CHUNK_FILE_SUFFIX = "_chunks.json"
 
 
 def connection_kwargs() -> dict[str, Any]:
@@ -44,6 +46,57 @@ def load_env_file(path: Path = Path(".env")) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def ensure_schema(cur: psycopg.Cursor) -> None:
+    """Apply additive schema changes for databases created before link/source_file."""
+    cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    cur.execute("ALTER TABLE videos ADD COLUMN IF NOT EXISTS source_file TEXT UNIQUE")
+    cur.execute("ALTER TABLE chunks ADD COLUMN IF NOT EXISTS link TEXT")
+    cur.execute(
+        "DROP FUNCTION IF EXISTS search_video_chunks(vector, integer, text)"
+    )
+    cur.execute(
+        """
+        CREATE OR REPLACE FUNCTION search_video_chunks(
+            query_embedding vector(768),
+            match_count INTEGER DEFAULT 5,
+            filter_video_id TEXT DEFAULT NULL
+        )
+        RETURNS TABLE (
+            chunk_pk BIGINT,
+            video_id TEXT,
+            video_title TEXT,
+            chunk_id INTEGER,
+            start_time DOUBLE PRECISION,
+            end_time DOUBLE PRECISION,
+            time_range TEXT,
+            text TEXT,
+            link TEXT,
+            similarity DOUBLE PRECISION
+        )
+        LANGUAGE sql
+        STABLE
+        AS $$
+            SELECT
+                c.id AS chunk_pk,
+                c.video_id,
+                v.title AS video_title,
+                c.chunk_id,
+                c.start_time,
+                c.end_time,
+                format_timestamp(c.start_time) || '-' || format_timestamp(c.end_time) AS time_range,
+                c.text,
+                c.link,
+                1 - (c.embedding <=> query_embedding) AS similarity
+            FROM chunks c
+            JOIN videos v ON v.video_id = c.video_id
+            WHERE filter_video_id IS NULL OR c.video_id = filter_video_id
+            ORDER BY c.embedding <=> query_embedding
+            LIMIT GREATEST(match_count, 1);
+        $$
+        """
+    )
+
+
 def load_chunks_document(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as handle:
         document = json.load(handle)
@@ -70,32 +123,71 @@ def validate_chunk(chunk: dict[str, Any], *, path: Path, index: int) -> None:
         )
 
 
-def upsert_video(cur: psycopg.Cursor, document: dict[str, Any]) -> None:
+def discover_chunk_files(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        raise FileNotFoundError(f"Chunk directory not found: {directory}")
+    return sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and path.name.endswith(CHUNK_FILE_SUFFIX)
+    )
+
+
+def wipe_database(cur: psycopg.Cursor) -> None:
+    cur.execute("TRUNCATE videos RESTART IDENTITY CASCADE")
+
+
+def upsert_video(
+    cur: psycopg.Cursor,
+    document: dict[str, Any],
+    *,
+    source_file: str,
+) -> str:
+    cur.execute(
+        "SELECT video_id FROM videos WHERE source_file = %s",
+        (source_file,),
+    )
+    existing = cur.fetchone()
+    video_id = document["video_id"]
+
+    if existing and existing[0] != video_id:
+        cur.execute("DELETE FROM videos WHERE source_file = %s", (source_file,))
+
     cur.execute(
         """
-        INSERT INTO videos (video_id, title, duration_seconds, transcribed_at)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO videos (video_id, title, duration_seconds, transcribed_at, source_file)
+        VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT (video_id) DO UPDATE SET
             title = EXCLUDED.title,
             duration_seconds = EXCLUDED.duration_seconds,
             transcribed_at = EXCLUDED.transcribed_at,
+            source_file = EXCLUDED.source_file,
             updated_at = NOW()
         """,
         (
-            document["video_id"],
+            video_id,
             document["title"],
             document.get("duration_seconds"),
             document.get("transcribed_at"),
+            source_file,
         ),
     )
+    return video_id
 
 
-def upsert_chunks(cur: psycopg.Cursor, document: dict[str, Any], *, source: Path) -> int:
+def upsert_chunks(
+    cur: psycopg.Cursor,
+    document: dict[str, Any],
+    *,
+    source: Path,
+) -> int:
     video_id = document["video_id"]
     rows: list[tuple[Any, ...]] = []
+    chunk_ids: list[int] = []
 
     for index, chunk in enumerate(document["chunks"]):
         validate_chunk(chunk, path=source, index=index)
+        chunk_ids.append(chunk["chunk_id"])
         rows.append(
             (
                 video_id,
@@ -105,6 +197,7 @@ def upsert_chunks(cur: psycopg.Cursor, document: dict[str, Any], *, source: Path
                 chunk.get("segment_ids", []),
                 chunk["text"],
                 chunk.get("word_count"),
+                chunk.get("link"),
                 chunk["embedding"],
             )
         )
@@ -119,41 +212,88 @@ def upsert_chunks(cur: psycopg.Cursor, document: dict[str, Any], *, source: Path
             segment_ids,
             text,
             word_count,
+            link,
             embedding
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (video_id, chunk_id) DO UPDATE SET
             start_time = EXCLUDED.start_time,
             end_time = EXCLUDED.end_time,
             segment_ids = EXCLUDED.segment_ids,
             text = EXCLUDED.text,
             word_count = EXCLUDED.word_count,
+            link = EXCLUDED.link,
             embedding = EXCLUDED.embedding,
             updated_at = NOW()
         """,
         rows,
     )
+
+    cur.execute(
+        """
+        DELETE FROM chunks
+        WHERE video_id = %s
+          AND NOT (chunk_id = ANY(%s::integer[]))
+        """,
+        (video_id, chunk_ids),
+    )
     return len(rows)
 
 
-def ingest_file(path: Path) -> tuple[str, int]:
+def ingest_file(path: Path, *, cur: psycopg.Cursor | None = None) -> tuple[str, int]:
     document = load_chunks_document(path)
-    for index, chunk in enumerate(document["chunks"]):
-        validate_chunk(chunk, path=path, index=index)
+    source_file = path.name
 
-    with connect() as conn:
-        with conn.cursor() as cur:
-            upsert_video(cur, document)
-            count = upsert_chunks(cur, document, source=path)
-        conn.commit()
+    if cur is None:
+        with connect() as conn:
+            with conn.cursor() as inner_cur:
+                ensure_schema(inner_cur)
+                video_id, count = ingest_file(path, cur=inner_cur)
+            conn.commit()
+        return video_id, count
 
-    return document["video_id"], count
+    video_id = upsert_video(cur, document, source_file=source_file)
+    document["video_id"] = video_id
+    count = upsert_chunks(cur, document, source=path)
+    return video_id, count
 
 
 def ingest_paths(paths: list[Path]) -> None:
-    for path in paths:
-        video_id, count = ingest_file(path)
-        print(f"Ingested {count} chunk(s) for video_id={video_id!r} from {path}")
+    with connect() as conn:
+        with conn.cursor() as cur:
+            ensure_schema(cur)
+            for path in paths:
+                video_id, count = ingest_file(path, cur=cur)
+                print(f"Ingested {count} chunk(s) for video_id={video_id!r} from {path}")
+        conn.commit()
+
+
+def sync_chunked_directory(
+    directory: Path = EMBEDDINGS_DIR,
+    *,
+    wipe: bool = False,
+) -> None:
+    paths = discover_chunk_files(directory)
+    if not paths:
+        print(f"No *{CHUNK_FILE_SUFFIX} files found in {directory}")
+        return
+
+    with connect() as conn:
+        with conn.cursor() as cur:
+            ensure_schema(cur)
+            if wipe:
+                wipe_database(cur)
+                print("Wiped videos and chunks tables.")
+
+            for path in paths:
+                video_id, count = ingest_file(path, cur=cur)
+                print(
+                    f"Synced {count} chunk(s) for video_id={video_id!r} "
+                    f"from {path.name}"
+                )
+        conn.commit()
+
+    print(f"Finished syncing {len(paths)} file(s) from {directory}")
 
 
 def search_chunks(
@@ -166,6 +306,7 @@ def search_chunks(
 
     with connect() as conn:
         with conn.cursor() as cur:
+            ensure_schema(cur)
             cur.execute(
                 """
                 SELECT
@@ -177,6 +318,7 @@ def search_chunks(
                     end_time,
                     time_range,
                     text,
+                    link,
                     similarity
                 FROM search_video_chunks(%s::vector, %s::integer, %s::text)
                 """,
@@ -199,6 +341,8 @@ def print_search_results(results: list[dict[str, Any]]) -> None:
             f"chunk {row['chunk_id']} @ {row['time_range']} "
             f"(similarity={row['similarity']:.4f})"
         )
+        if row.get("link"):
+            print(f"Link: {row['link']}")
         preview = row["text"]
         if len(preview) > 280:
             preview = preview[:277] + "..."
@@ -209,12 +353,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Load all chunked JSON from transcriptions/chunked into Postgres",
+    )
+    sync_parser.add_argument(
+        "--dir",
+        type=Path,
+        default=EMBEDDINGS_DIR,
+        help=f"Directory containing *{CHUNK_FILE_SUFFIX} files (default: {EMBEDDINGS_DIR})",
+    )
+    sync_parser.add_argument(
+        "--wipe",
+        action="store_true",
+        help="Delete all existing videos/chunks before loading (recommended for full refresh)",
+    )
+
     ingest_parser = subparsers.add_parser("ingest", help="Load embedded chunk JSON into Postgres")
     ingest_parser.add_argument(
         "paths",
         nargs="+",
         type=Path,
-        help="Embedded chunk JSON files (e.g. transcriptions/embeddings/my_video_chunks.json)",
+        help=f"Embedded chunk JSON files (e.g. transcriptions/chunked/my_video{CHUNK_FILE_SUFFIX})",
     )
 
     search_parser = subparsers.add_parser("search", help="Semantic search with timestamp citations")
@@ -236,6 +396,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "sync":
+            sync_chunked_directory(args.dir, wipe=args.wipe)
+            return 0
+
         if args.command == "ingest":
             ingest_paths(args.paths)
             return 0

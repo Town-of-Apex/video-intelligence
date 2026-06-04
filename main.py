@@ -20,6 +20,7 @@ import chunk
 import convert
 import embed
 import transcribe
+import sharepoint_nav
 
 
 def list_unprocessed_videos() -> list[Path]:
@@ -50,12 +51,15 @@ def process_video(
     transcribe.main(
         model_size,
         artifacts["audio"],
-        video_id=stem,
+        video_id=video_path.name,
         output_path=artifacts["transcript"],
     )
 
     print("Chunking...")
-    chunk.main(artifacts["transcript"], artifacts["embeddings"])
+    chunk_path = chunk.main(artifacts["transcript"], artifacts["embeddings"])
+
+    print("Adding nav to chunks...")
+    sharepoint_nav.add_nav_to_chunks(chunk_path)
 
     print("Manual embedding of chunks...")
     embed.embed_chunks(artifacts["embeddings"])

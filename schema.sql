@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS videos (
     title TEXT NOT NULL,
     duration_seconds DOUBLE PRECISION,
     transcribed_at TIMESTAMPTZ,
+    source_file TEXT UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     segment_ids INTEGER[] NOT NULL DEFAULT '{}',
     text TEXT NOT NULL,
     word_count INTEGER,
+    link TEXT,
     embedding vector(768) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -64,6 +66,7 @@ RETURNS TABLE (
     end_time DOUBLE PRECISION,
     time_range TEXT,
     text TEXT,
+    link TEXT,
     similarity DOUBLE PRECISION
 )
 LANGUAGE sql
@@ -78,6 +81,7 @@ AS $$
         c.end_time,
         format_timestamp(c.start_time) || '-' || format_timestamp(c.end_time) AS time_range,
         c.text,
+        c.link,
         1 - (c.embedding <=> query_embedding) AS similarity
     FROM chunks c
     JOIN videos v ON v.video_id = c.video_id

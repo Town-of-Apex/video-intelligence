@@ -1,8 +1,8 @@
 {
-  "video_id": "Apex_WFM_Weekly_Time_Entry",
+  "video_id": "Apex_WFM_Weekly_Time_Entry.mp4",
   "title": "Apex Wfm Weekly Time Entry",
   "duration_seconds": 268.05,
-  "transcribed_at": "2026-06-03T19:55:02+00:00",
+  "transcribed_at": "2026-06-04T13:48:40+00:00",
   "chunk_count": 2,
   "chunks": [
     {
@@ -49,6 +49,7 @@
       ],
       "text": "Hello and welcome to the demonstration on how to use the Infra Workforce Management module to enter weekly timesheet. Once logged into the Infra WIPM application, you will access your timesheet by clicking by timesheet in the header bar. This will display your timesheet for the current week. If a different week is desired, you can use the navigation arrows to go forward or backwards to the appropriate week. Optionally, you can use the calendar lookup to select a specific date or a week. Do begin entering your timesheet. You will come down to the time code section and make the appropriate time code selection. The list of time codes that is returned to the user are time codes that are applicable to that particular employees' work area. Regular work will be defaulted at the top of the list as this will be the most common time code. However, there are other time codes that can be used to indicate what type of work if it is not at your work. You can also enter absences directly on a timesheet in lieu of following the time off process. In this example, I will select work and you'll scroll to the right and in the date entry boxes you'll indicate in decimal format the amount of hours worked in that particular time code by day. There is a job selection box that allows employees that have multiple work assignments to make a selection on which job the hours were worked in. If an employee only has one job assignment, a job selection is not necessary as it will default if an employee's primary job. Optionally, comments can be added by day by quick in the add comments link. Once the time sheet is ready to be submitted, quick the save button. If time has been entered on a given day, you'll notice that the approval checkbox has been unmarked indicating it is currently waiting time sheet approval from a manager or authorized personnel. The calculated summary displays, what this is is it takes the time entered by the employee, puts it through the in for WFM rule engine and calculates how the employee should be paid for the hours entered. In this case, we just have a standard 40 hour work week. We set functionality exists on the time sheet to allow users to fill out time sheets in a more expeditious manner.",
       "word_count": 402,
+      "link": "https://apexncorg.sharepoint.com/sites/TOAInnovations/_layouts/15/stream.aspx?id=%2Fsites%2FTOAInnovations%2FShared%20Documents%2FProject%20Resources%2FTraining%20Intelligence%2FVideos%2FApex_WFM_Weekly_Time_Entry.mp4&nav=eyJwbGF5YmFja09wdGlvbnMiOnsic3RhcnRUaW1lSW5TZWNvbmRzIjowLjB9fQ%3D%3D",
       "embedding": [
         -0.035334308,
         0.015981035,
@@ -855,6 +856,7 @@
       ],
       "text": "been unmarked indicating it is currently waiting time sheet approval from a manager or authorized personnel. The calculated summary displays, what this is is it takes the time entered by the employee, puts it through the in for WFM rule engine and calculates how the employee should be paid for the hours entered. In this case, we just have a standard 40 hour work week. We set functionality exists on the time sheet to allow users to fill out time sheets in a more expeditious manner. You can populate the time sheet as the same as last week, where you can save the time as a preset. I'll go ahead and save this time sheet as a standard work week preset. Advancing forward to the next week, I can now use that preset that I've just saved. You'll see the time sheet is automatically populated based on the settings in that preset. At any point in a way can go back to their time sheet in the current paper to add additional hours. I'll do that now. Adding an additional hour for Friday. Once I click save, I can see that additional hour in the calculated summary as calm. It defaults a comp. However, an employee can use the comp override functionality to elect to be paid directly for that hour. Indicate the amount of hours you'd like to override and click save. And you'll now notice in the calculate summary that the regular work performed with an hour type of OT1.5 will be paid out to the employee rather than being comped. Optionally print functionality is available to print time sheets as needed. And that is the conclusion of our time sheet demo. Thank you.",
       "word_count": 286,
+      "link": "https://apexncorg.sharepoint.com/sites/TOAInnovations/_layouts/15/stream.aspx?id=%2Fsites%2FTOAInnovations%2FShared%20Documents%2FProject%20Resources%2FTraining%20Intelligence%2FVideos%2FApex_WFM_Weekly_Time_Entry.mp4&nav=eyJwbGF5YmFja09wdGlvbnMiOnsic3RhcnRUaW1lSW5TZWNvbmRzIjoxMzIuMn19",
       "embedding": [
         0.025432553,
         0.028694184,

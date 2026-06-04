@@ -26,7 +26,9 @@ Schema is applied on first boot via `schema.sql` mounted into `docker-entrypoint
 uv sync
 # Place .webm files in videos/unprocessed/, then run the full pipeline:
 uv run python main.py
-uv run python database.py ingest transcriptions/embeddings/*_chunks.json
+uv run python database.py sync --wipe
+# Or ingest specific files:
+uv run python database.py ingest transcriptions/chunked/*_chunks.json
 ```
 
 ## 3. Test retrieval (citations include timestamps)
@@ -83,6 +85,7 @@ Generate `$1` with the same Ollama embedding model used at ingest time.
 
 ## Notes
 
+- `database.py sync` loads every `transcriptions/chunked/*_chunks.json` file. Use `--wipe` for a full refresh. Re-runs upsert by source JSON filename and `(video_id, chunk_id)`; SharePoint `link` values are stored when present.
 - Re-running `ingest` upserts by `(video_id, chunk_id)`.
 - If you change `schema.sql` on an existing volume, run migrations manually or recreate the volume (`docker compose ... down -v`).
 - For production, move credentials out of compose into secrets and restrict network access.

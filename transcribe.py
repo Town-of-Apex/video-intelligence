@@ -92,7 +92,7 @@ def main(
     payload = build_transcript(
         segments,
         info,
-        video_id=video_id or audio_path.stem,
+        video_id=video_id or audio_path,
         title=title or default_title(audio_path),
     )
     from paths import transcript_path as default_transcript_path
