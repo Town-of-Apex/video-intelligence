@@ -4,25 +4,25 @@
 # Stop:   docker compose -f docker_compose.yml down
 # Reset:  docker compose -f docker_compose.yml down -v   (deletes data volume)
 #
-# OpenWebUI (Docker) reaches this DB at host.docker.internal:5432 on Windows/macOS.
+# OpenWebUI (Docker) reaches this DB at host.docker.internal:5431 on Windows/macOS.
 # Ollama (native app) stays on localhost:11434 for embeddings and chat.
 
 services:
   postgres:
     image: pgvector/pgvector:pg17
-    container_name: video-intelligence-db
+    container_name: training-intelligence-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: video_intelligence
+      POSTGRES_DB: training_intelligence
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
-      - "5432:5432"
+      - "5431:5431"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d video_intelligence"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d training_intelligence"]
       interval: 5s
       timeout: 5s
       retries: 10

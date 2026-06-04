@@ -21,9 +21,9 @@ CHUNK_FILE_SUFFIX = "_chunks.json"
 
 def connection_kwargs() -> dict[str, Any]:
     return {
-        "host": os.getenv("POSTGRES_HOST", "localhost"),
-        "port": int(os.getenv("POSTGRES_PORT", "5432")),
-        "dbname": os.getenv("POSTGRES_DB", "video_intelligence"),
+        "host": os.getenv("POSTGRES_HOST", "host.docker.internal"),
+        "port": int(os.getenv("POSTGRES_PORT", "5431")),
+        "dbname": os.getenv("POSTGRES_DB", "training_intelligence"),
         "user": os.getenv("POSTGRES_USER", "postgres"),
         "password": os.getenv("POSTGRES_PASSWORD", "password"),
     }

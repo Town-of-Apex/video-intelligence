@@ -1,4 +1,4 @@
--- Video intelligence: transcripts chunked and embedded for semantic search.
+-- Training intelligence: transcripts chunked and embedded for semantic search.
 -- Embedding model: Ollama nomic-embed-text (768 dimensions).
 
 CREATE EXTENSION IF NOT EXISTS vector;

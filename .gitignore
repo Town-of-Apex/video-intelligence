@@ -11,17 +11,17 @@ wheels/
 
 # Local env
 .env
-.webm
-.mp4
-.mp3
-.mkv
-.avi
-.mov
-.wmv
-.flv
-.mpeg
-.mpg
-.m4v
-.m4a
-.m4b
-.m4p
+*.webm
+*.mp4
+*.mp3
+*.mkv
+*.avi
+*.mov
+*.wmv
+*.flv
+*.mpeg
+*.mpg
+*.m4v
+*.m4a
+*.m4b
+*.m4p
