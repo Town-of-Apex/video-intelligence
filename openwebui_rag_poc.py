@@ -156,8 +156,7 @@ class Pipe:
                     f"Found → {hit['video_title']} @ {hit['time_range']}",
                 )
 
-            prompt = f"""Answer using only the transcript excerpts below.
-Cite timestamp ranges when referencing a passage.
+            prompt = f"""Answer using only the transcript excerpts below. Each one comes from a training video that has been transcribed and timestamped. Cite specific portions of the video transcripts provided (by the timestamp) and ALWAYS provide the link to the best portion of the video to allow the user to continue learning by watching that part of the video. Copy the link EXACTLY in your response and give that link to the user in an easy-to-click format or copy/paste if necessary. 
 
 Transcript excerpts:
 {chr(10).join(context_lines)}
