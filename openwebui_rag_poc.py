@@ -100,7 +100,7 @@ class Pipe:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
                     """
-                    SELECT video_title, time_range, text, similarity
+                    SELECT video_title, time_range, text, similarity, link
                     FROM search_video_chunks(%s::vector(768), %s::integer, %s::text)
                     """,
                     (embedding_literal, self.valves.RAG_TOP_K, video_filter),
@@ -147,13 +147,13 @@ class Pipe:
             hits = self._search_chunks(query)
 
             context_lines = [
-                f"[{h['time_range']}] {h['text']}" for h in hits
+                f"[{h['time_range']}] {h['text']} | {h['link']}" for h in hits
             ] or ["(No matching transcript chunks.)"]
 
             for hit in hits:
                 await self._status(
                     __event_emitter__,
-                    f"Found → {hit['video_title']} @ {hit['time_range']}",
+                    f"Found → {hit['video_title']} @ {hit['time_range']} | {hit['link']}",
                 )
 
             prompt = f"""Answer using only the transcript excerpts below. Each one comes from a training video that has been transcribed and timestamped. Cite specific portions of the video transcripts provided (by the timestamp) and ALWAYS provide the link to the best portion of the video to allow the user to continue learning by watching that part of the video. Copy the link EXACTLY in your response and give that link to the user in an easy-to-click format or copy/paste if necessary. 
