@@ -2,6 +2,7 @@
 -- Embedding model: Ollama nomic-embed-text (768 dimensions).
 
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS videos (
     video_id TEXT PRIMARY KEY,
@@ -34,6 +35,14 @@ CREATE INDEX IF NOT EXISTS chunks_video_idx ON chunks (video_id);
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx
     ON chunks
     USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS chunks_text_fts_idx
+    ON chunks
+    USING gin (to_tsvector('english', text));
+
+CREATE INDEX IF NOT EXISTS videos_title_trgm_idx
+    ON videos
+    USING gin (title gin_trgm_ops);
 
 -- Human-readable timestamp for citations (e.g. 12:34-14:08).
 CREATE OR REPLACE FUNCTION format_timestamp(seconds DOUBLE PRECISION)
@@ -87,5 +96,80 @@ AS $$
     JOIN videos v ON v.video_id = c.video_id
     WHERE filter_video_id IS NULL OR c.video_id = filter_video_id
     ORDER BY c.embedding <=> query_embedding
+    LIMIT GREATEST(match_count, 1);
+$$;
+
+-- Hybrid search: vector similarity + transcript keyword match + title fuzzy match.
+CREATE OR REPLACE FUNCTION search_video_chunks_hybrid(
+    query_embedding vector(768),
+    query_text TEXT,
+    match_count INTEGER DEFAULT 8,
+    filter_video_id TEXT DEFAULT NULL,
+    vector_weight DOUBLE PRECISION DEFAULT 0.65,
+    text_weight DOUBLE PRECISION DEFAULT 0.20,
+    title_weight DOUBLE PRECISION DEFAULT 0.15
+)
+RETURNS TABLE (
+    chunk_pk BIGINT,
+    video_id TEXT,
+    video_title TEXT,
+    chunk_id INTEGER,
+    start_time DOUBLE PRECISION,
+    end_time DOUBLE PRECISION,
+    time_range TEXT,
+    text TEXT,
+    link TEXT,
+    similarity DOUBLE PRECISION,
+    text_rank DOUBLE PRECISION,
+    title_rank DOUBLE PRECISION,
+    combined_score DOUBLE PRECISION
+)
+LANGUAGE sql
+STABLE
+AS $$
+    WITH ranked AS (
+        SELECT
+            c.id AS chunk_pk,
+            c.video_id,
+            v.title AS video_title,
+            c.chunk_id,
+            c.start_time,
+            c.end_time,
+            format_timestamp(c.start_time) || '-' || format_timestamp(c.end_time) AS time_range,
+            c.text,
+            c.link,
+            1 - (c.embedding <=> query_embedding) AS similarity,
+            COALESCE(
+                ts_rank_cd(
+                    to_tsvector('english', c.text),
+                    websearch_to_tsquery('english', query_text)
+                ),
+                0
+            ) AS text_rank,
+            similarity(v.title, query_text) AS title_rank
+        FROM chunks c
+        JOIN videos v ON v.video_id = c.video_id
+        WHERE filter_video_id IS NULL OR c.video_id = filter_video_id
+    )
+    SELECT
+        chunk_pk,
+        video_id,
+        video_title,
+        chunk_id,
+        start_time,
+        end_time,
+        time_range,
+        text,
+        link,
+        similarity,
+        text_rank,
+        title_rank,
+        (
+            similarity * vector_weight
+            + text_rank * text_weight
+            + title_rank * title_weight
+        ) AS combined_score
+    FROM ranked
+    ORDER BY combined_score DESC
     LIMIT GREATEST(match_count, 1);
 $$;

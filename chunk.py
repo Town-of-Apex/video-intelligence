@@ -1,10 +1,37 @@
 import json
+import os
 from pathlib import Path
 
-TARGET_WORDS = 400
-OVERLAP_WORDS = 75
+DEFAULT_TARGET_WORDS = 200
+DEFAULT_OVERLAP_WORDS = 50
 
 METADATA_KEYS = ("video_id", "title", "duration_seconds", "transcribed_at")
+
+
+def chunk_settings(
+    *,
+    target_words: int | None = None,
+    overlap_words: int | None = None,
+) -> tuple[int, int]:
+    """Resolve chunk size and overlap from args or environment."""
+    resolved_target = target_words
+    if resolved_target is None:
+        resolved_target = int(os.getenv("CHUNK_TARGET_WORDS", str(DEFAULT_TARGET_WORDS)))
+
+    resolved_overlap = overlap_words
+    if resolved_overlap is None:
+        resolved_overlap = int(os.getenv("CHUNK_OVERLAP_WORDS", str(DEFAULT_OVERLAP_WORDS)))
+
+    if resolved_target < 1:
+        raise ValueError(f"target_words must be >= 1, got {resolved_target}")
+    if resolved_overlap < 0:
+        raise ValueError(f"overlap_words must be >= 0, got {resolved_overlap}")
+    if resolved_overlap >= resolved_target:
+        raise ValueError(
+            f"overlap_words ({resolved_overlap}) must be less than target_words ({resolved_target})"
+        )
+
+    return resolved_target, resolved_overlap
 
 
 def count_words(segments):
@@ -66,8 +93,18 @@ def load_transcript(path):
         return json.load(handle)
 
 
-def chunkify_segments(segments):
+def chunkify_segments(
+    segments,
+    *,
+    target_words: int | None = None,
+    overlap_words: int | None = None,
+):
     """Split transcript segments into overlapping word-bounded chunks."""
+    target_words, overlap_words = chunk_settings(
+        target_words=target_words,
+        overlap_words=overlap_words,
+    )
+
     if not segments:
         return []
 
@@ -78,10 +115,10 @@ def chunkify_segments(segments):
     for segment in segments:
         current_segments.append(segment)
 
-        if count_words(current_segments) >= TARGET_WORDS:
+        if count_words(current_segments) >= target_words:
             chunks.append(create_chunk(current_segments, chunk_id))
             chunk_id += 1
-            current_segments = overlap_segments(current_segments, OVERLAP_WORDS)
+            current_segments = overlap_segments(current_segments, overlap_words)
 
     if current_segments:
         if chunks:
@@ -96,9 +133,18 @@ def chunkify_segments(segments):
     return chunks
 
 
-def chunkify_transcript(transcript):
+def chunkify_transcript(
+    transcript,
+    *,
+    target_words: int | None = None,
+    overlap_words: int | None = None,
+):
     metadata = extract_metadata(transcript)
-    chunks = chunkify_segments(transcript.get("segments", []))
+    chunks = chunkify_segments(
+        transcript.get("segments", []),
+        target_words=target_words,
+        overlap_words=overlap_words,
+    )
     return chunks, metadata
 
 
@@ -109,7 +155,13 @@ def stem_from_transcript_path(transcript_path: Path) -> str:
     return stem
 
 
-def main(transcript_path: str | Path, output_path: str | Path | None = None) -> Path:
+def main(
+    transcript_path: str | Path,
+    output_path: str | Path | None = None,
+    *,
+    target_words: int | None = None,
+    overlap_words: int | None = None,
+) -> Path:
     transcript_path = Path(transcript_path)
     if output_path is None:
         from paths import embeddings_path
@@ -118,11 +170,23 @@ def main(transcript_path: str | Path, output_path: str | Path | None = None) -> 
     else:
         output_path = Path(output_path)
 
+    target_words, overlap_words = chunk_settings(
+        target_words=target_words,
+        overlap_words=overlap_words,
+    )
+
     transcript = load_transcript(transcript_path)
-    chunks, metadata = chunkify_transcript(transcript)
+    chunks, metadata = chunkify_transcript(
+        transcript,
+        target_words=target_words,
+        overlap_words=overlap_words,
+    )
     saved = save_chunks(chunks, output_path, metadata)
 
-    print(f"Created {len(chunks)} chunks -> {saved}")
+    print(
+        f"Created {len(chunks)} chunks "
+        f"(target={target_words} words, overlap={overlap_words} words) -> {saved}"
+    )
     for chunk in chunks:
         print(
             f"  chunk {chunk['chunk_id']}: "
@@ -146,6 +210,18 @@ if __name__ == "__main__":
         help="Transcript JSON (default: first *_transcript.json in transcriptions/transcripts/)",
     )
     parser.add_argument("--output", type=Path, help="Chunk JSON path (before embeddings)")
+    parser.add_argument(
+        "--target-words",
+        type=int,
+        default=None,
+        help=f"Words per chunk (default: {DEFAULT_TARGET_WORDS}, env: CHUNK_TARGET_WORDS)",
+    )
+    parser.add_argument(
+        "--overlap-words",
+        type=int,
+        default=None,
+        help=f"Overlap between chunks in words (default: {DEFAULT_OVERLAP_WORDS}, env: CHUNK_OVERLAP_WORDS)",
+    )
     args = parser.parse_args()
 
     ensure_media_dirs()
@@ -156,4 +232,9 @@ if __name__ == "__main__":
             parser.error(f"No transcript files found in {TRANSCRIPTS_DIR}")
         transcript = candidates[0]
 
-    main(transcript, args.output)
+    main(
+        transcript,
+        args.output,
+        target_words=args.target_words,
+        overlap_words=args.overlap_words,
+    )

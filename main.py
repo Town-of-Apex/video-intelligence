@@ -21,6 +21,9 @@ import convert
 import embed
 import transcribe
 import sharepoint_nav
+from env_config import load_env_file
+
+load_env_file()
 
 
 def list_unprocessed_videos() -> list[Path]:
@@ -32,6 +35,8 @@ def process_video(
     *,
     model_size: str = "tiny.en",
     move_when_done: bool = True,
+    target_words: int | None = None,
+    overlap_words: int | None = None,
 ) -> dict[str, Path]:
     """Run extract -> transcribe -> chunk -> embed for one video file."""
     stem = video_path.stem
@@ -56,7 +61,12 @@ def process_video(
     )
 
     print("Chunking...")
-    chunk_path = chunk.main(artifacts["transcript"], artifacts["embeddings"])
+    chunk_path = chunk.main(
+        artifacts["transcript"],
+        artifacts["embeddings"],
+        target_words=target_words,
+        overlap_words=overlap_words,
+    )
 
     print("Adding nav to chunks...")
     sharepoint_nav.add_nav_to_chunks(chunk_path)
@@ -74,7 +84,12 @@ def process_video(
     return artifacts
 
 
-def process_all(*, model_size: str = "tiny.en") -> int:
+def process_all(
+    *,
+    model_size: str = "tiny.en",
+    target_words: int | None = None,
+    overlap_words: int | None = None,
+) -> int:
     ensure_media_dirs()
     videos = list_unprocessed_videos()
     if not videos:
@@ -86,7 +101,12 @@ def process_all(*, model_size: str = "tiny.en") -> int:
 
     for video in videos:
         try:
-            process_video(video, model_size=model_size)
+            process_video(
+                video,
+                model_size=model_size,
+                target_words=target_words,
+                overlap_words=overlap_words,
+            )
         except Exception as exc:
             print(f"Failed {video.name}: {exc}", file=sys.stderr)
             failures.append((video, exc))
@@ -117,6 +137,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Leave the source video in videos/unprocessed/ after processing",
     )
+    parser.add_argument(
+        "--target-words",
+        type=int,
+        default=None,
+        help="Words per transcript chunk (default: 200, env: CHUNK_TARGET_WORDS)",
+    )
+    parser.add_argument(
+        "--overlap-words",
+        type=int,
+        default=None,
+        help="Word overlap between chunks (default: 50, env: CHUNK_OVERLAP_WORDS)",
+    )
     return parser
 
 
@@ -132,13 +164,23 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Video not found: {args.video}", file=sys.stderr)
             return 1
         try:
-            process_video(video, model_size=args.model_size, move_when_done=not args.no_move)
+            process_video(
+                video,
+                model_size=args.model_size,
+                move_when_done=not args.no_move,
+                target_words=args.target_words,
+                overlap_words=args.overlap_words,
+            )
         except Exception as exc:
             print(f"Failed: {exc}", file=sys.stderr)
             return 1
         return 0
 
-    return process_all(model_size=args.model_size)
+    return process_all(
+        model_size=args.model_size,
+        target_words=args.target_words,
+        overlap_words=args.overlap_words,
+    )
 
 
 if __name__ == "__main__":

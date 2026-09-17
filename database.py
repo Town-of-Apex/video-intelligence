@@ -13,7 +13,16 @@ import psycopg
 from pgvector.psycopg import register_vector
 
 from embed import generate_embedding
+from env_config import load_env_file
 from paths import EMBEDDINGS_DIR
+from rag_retrieval import (
+    HYBRID_SEARCH_SQL,
+    LIST_VIDEO_TITLES_SQL,
+    VECTOR_SEARCH_SQL,
+    expand_query_with_titles,
+    merge_hits,
+    row_to_hit,
+)
 
 EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
 CHUNK_FILE_SUFFIX = "_chunks.json"
@@ -35,24 +44,26 @@ def connect() -> psycopg.Connection:
     return conn
 
 
-def load_env_file(path: Path = Path(".env")) -> None:
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-
-
 def ensure_schema(cur: psycopg.Cursor) -> None:
     """Apply additive schema changes for databases created before link/source_file."""
     cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     cur.execute("ALTER TABLE videos ADD COLUMN IF NOT EXISTS source_file TEXT UNIQUE")
     cur.execute("ALTER TABLE chunks ADD COLUMN IF NOT EXISTS link TEXT")
     cur.execute(
+        "CREATE INDEX IF NOT EXISTS chunks_text_fts_idx "
+        "ON chunks USING gin (to_tsvector('english', text))"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS videos_title_trgm_idx "
+        "ON videos USING gin (title gin_trgm_ops)"
+    )
+    cur.execute(
         "DROP FUNCTION IF EXISTS search_video_chunks(vector, integer, text)"
+    )
+    cur.execute(
+        "DROP FUNCTION IF EXISTS search_video_chunks_hybrid("
+        "vector, text, integer, text, double precision, double precision, double precision)"
     )
     cur.execute(
         """
@@ -91,6 +102,83 @@ def ensure_schema(cur: psycopg.Cursor) -> None:
             JOIN videos v ON v.video_id = c.video_id
             WHERE filter_video_id IS NULL OR c.video_id = filter_video_id
             ORDER BY c.embedding <=> query_embedding
+            LIMIT GREATEST(match_count, 1);
+        $$
+        """
+    )
+    cur.execute(
+        """
+        CREATE OR REPLACE FUNCTION search_video_chunks_hybrid(
+            query_embedding vector(768),
+            query_text TEXT,
+            match_count INTEGER DEFAULT 8,
+            filter_video_id TEXT DEFAULT NULL,
+            vector_weight DOUBLE PRECISION DEFAULT 0.65,
+            text_weight DOUBLE PRECISION DEFAULT 0.20,
+            title_weight DOUBLE PRECISION DEFAULT 0.15
+        )
+        RETURNS TABLE (
+            chunk_pk BIGINT,
+            video_id TEXT,
+            video_title TEXT,
+            chunk_id INTEGER,
+            start_time DOUBLE PRECISION,
+            end_time DOUBLE PRECISION,
+            time_range TEXT,
+            text TEXT,
+            link TEXT,
+            similarity DOUBLE PRECISION,
+            text_rank DOUBLE PRECISION,
+            title_rank DOUBLE PRECISION,
+            combined_score DOUBLE PRECISION
+        )
+        LANGUAGE sql
+        STABLE
+        AS $$
+            WITH ranked AS (
+                SELECT
+                    c.id AS chunk_pk,
+                    c.video_id,
+                    v.title AS video_title,
+                    c.chunk_id,
+                    c.start_time,
+                    c.end_time,
+                    format_timestamp(c.start_time) || '-' || format_timestamp(c.end_time) AS time_range,
+                    c.text,
+                    c.link,
+                    1 - (c.embedding <=> query_embedding) AS similarity,
+                    COALESCE(
+                        ts_rank_cd(
+                            to_tsvector('english', c.text),
+                            websearch_to_tsquery('english', query_text)
+                        ),
+                        0
+                    ) AS text_rank,
+                    similarity(v.title, query_text) AS title_rank
+                FROM chunks c
+                JOIN videos v ON v.video_id = c.video_id
+                WHERE filter_video_id IS NULL OR c.video_id = filter_video_id
+            )
+            SELECT
+                chunk_pk,
+                video_id,
+                video_title,
+                chunk_id,
+                start_time,
+                end_time,
+                time_range,
+                text,
+                link,
+                similarity,
+                text_rank,
+                title_rank,
+                (
+                    similarity * vector_weight
+                    + text_rank * text_weight
+                    + title_rank * title_weight
+                ) AS combined_score
+            FROM ranked
+            ORDER BY combined_score DESC
             LIMIT GREATEST(match_count, 1);
         $$
         """
@@ -296,38 +384,108 @@ def sync_chunked_directory(
     print(f"Finished syncing {len(paths)} file(s) from {directory}")
 
 
+def list_video_titles(cur: psycopg.Cursor) -> list[dict[str, str]]:
+    cur.execute(LIST_VIDEO_TITLES_SQL)
+    return [{"video_id": row[0], "title": row[1]} for row in cur.fetchall()]
+
+
+def _search_with_embedding(
+    cur: psycopg.Cursor,
+    *,
+    query: str,
+    embedding: list[float],
+    fetch_k: int,
+    video_id: str | None,
+    hybrid: bool,
+    vector_weight: float,
+    text_weight: float,
+    title_weight: float,
+) -> list[dict[str, Any]]:
+    if hybrid:
+        cur.execute(
+            HYBRID_SEARCH_SQL,
+            (
+                embedding,
+                query,
+                fetch_k,
+                video_id,
+                vector_weight,
+                text_weight,
+                title_weight,
+            ),
+        )
+    else:
+        cur.execute(VECTOR_SEARCH_SQL, (embedding, fetch_k, video_id))
+
+    columns = [desc.name for desc in cur.description]
+    return [row_to_hit(row, columns) for row in cur.fetchall()]
+
+
 def search_chunks(
     query: str,
     *,
     limit: int = 5,
+    fetch_k: int | None = None,
     video_id: str | None = None,
+    hybrid: bool = True,
+    expand_query: bool = False,
+    vector_weight: float = 0.65,
+    text_weight: float = 0.20,
+    title_weight: float = 0.15,
 ) -> list[dict[str, Any]]:
-    embedding = generate_embedding(query)
+    fetch_k = fetch_k or max(limit * 3, 12)
+    queries = [query.strip()]
 
     with connect() as conn:
         with conn.cursor() as cur:
             ensure_schema(cur)
-            cur.execute(
-                """
-                SELECT
-                    chunk_pk,
-                    video_id,
-                    video_title,
-                    chunk_id,
-                    start_time,
-                    end_time,
-                    time_range,
-                    text,
-                    link,
-                    similarity
-                FROM search_video_chunks(%s::vector, %s::integer, %s::text)
-                """,
-                (embedding, limit, video_id),
-            )
-            columns = [desc.name for desc in cur.description]
-            rows = cur.fetchall()
 
-    return [dict(zip(columns, row, strict=True)) for row in rows]
+            if expand_query:
+                titles = [row["title"] for row in list_video_titles(cur)]
+                expanded = expand_query_with_titles(
+                    query,
+                    titles,
+                    generate=lambda prompt: _generate_search_text(prompt),
+                )
+                if expanded and expanded not in queries:
+                    queries.append(expanded)
+
+            hit_lists: list[list[dict[str, Any]]] = []
+            for search_query in queries:
+                embedding = generate_embedding(search_query)
+                hit_lists.append(
+                    _search_with_embedding(
+                        cur,
+                        query=search_query,
+                        embedding=embedding,
+                        fetch_k=fetch_k,
+                        video_id=video_id,
+                        hybrid=hybrid,
+                        vector_weight=vector_weight,
+                        text_weight=text_weight,
+                        title_weight=title_weight,
+                    )
+                )
+
+    return merge_hits(hit_lists, top_k=limit)
+
+
+def _generate_search_text(prompt: str) -> str:
+    """Optional query expansion for CLI use; requires a chat model via Ollama."""
+    try:
+        from ollama import Client
+
+        from env_config import normalize_service_url
+
+        host = normalize_service_url(
+            os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+            default="http://localhost:11434",
+        )
+        model = os.getenv("OLLAMA_MODEL", "gemma3:4b")
+        response = Client(host=host).generate(model=model, prompt=prompt, stream=False)
+        return response.get("response", "").strip()
+    except Exception:
+        return ""
 
 
 def print_search_results(results: list[dict[str, Any]]) -> None:
@@ -336,10 +494,11 @@ def print_search_results(results: list[dict[str, Any]]) -> None:
         return
 
     for rank, row in enumerate(results, start=1):
+        score = row.get("combined_score", row["similarity"])
         print(
             f"\n[{rank}] {row['video_title']} ({row['video_id']}) "
             f"chunk {row['chunk_id']} @ {row['time_range']} "
-            f"(similarity={row['similarity']:.4f})"
+            f"(score={float(score):.4f}, similarity={row['similarity']:.4f})"
         )
         if row.get("link"):
             print(f"Link: {row['link']}")
@@ -380,7 +539,23 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser = subparsers.add_parser("search", help="Semantic search with timestamp citations")
     search_parser.add_argument("query", help="Natural language question")
     search_parser.add_argument("--limit", type=int, default=5)
+    search_parser.add_argument(
+        "--fetch-k",
+        type=int,
+        default=None,
+        help="Candidate pool size before trimming to --limit (default: max(limit*3, 12))",
+    )
     search_parser.add_argument("--video-id", help="Restrict search to one video_id")
+    search_parser.add_argument(
+        "--vector-only",
+        action="store_true",
+        help="Use pure vector search instead of hybrid vector+keyword+title",
+    )
+    search_parser.add_argument(
+        "--expand-query",
+        action="store_true",
+        help="Rewrite the query with Ollama using the video title catalog",
+    )
     search_parser.add_argument(
         "--json",
         action="store_true",
@@ -405,7 +580,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "search":
-            results = search_chunks(args.query, limit=args.limit, video_id=args.video_id)
+            results = search_chunks(
+                args.query,
+                limit=args.limit,
+                fetch_k=args.fetch_k,
+                video_id=args.video_id,
+                hybrid=not args.vector_only,
+                expand_query=args.expand_query,
+            )
             if args.json:
                 print(json.dumps(results, indent=2))
             else:
