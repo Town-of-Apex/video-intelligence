@@ -5,9 +5,18 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.117.1",
     "faster-whisper>=1.2.1",
     "moviepy>=2.2.1",
     "ollama>=0.6.2",
     "pgvector>=0.4.1",
     "psycopg[binary]>=3.3.4",
+    "python-multipart>=0.0.20",
+    "uvicorn[standard]>=0.37.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8.4.2",
 ]

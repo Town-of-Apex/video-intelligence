@@ -1,13 +1,29 @@
 # PostgreSQL + pgvector for local transcript chunk storage and retrieval.
 #
-# Start:  docker compose -f docker_compose.yml up -d
-# Stop:   docker compose -f docker_compose.yml down
-# Reset:  docker compose -f docker_compose.yml down -v   (deletes data volume)
+# Start:  docker compose up -d
+# Stop:   docker compose down
+# Reset:  docker compose down -v   (deletes data volumes)
 #
 # OpenWebUI (Docker) reaches this DB at host.docker.internal:5431 on Windows/macOS.
 # Ollama (native app) stays on localhost:11434 for embeddings and chat.
 
 services:
+  transcriber:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-intelligence-transcriber
+    restart: unless-stopped
+    environment:
+      APP_DATA_DIR: /app/data
+      WHISPER_MODEL: ${WHISPER_MODEL:-tiny.en}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-4294967296}
+    ports:
+      - "${TRANSCRIBER_PORT:-8081}:8000"
+    volumes:
+      # Jobs, exports, and Whisper model cache (HF_HOME) all live here.
+      - transcriber_data:/app/data
+
   postgres:
     image: pgvector/pgvector:pg17
     container_name: training-intelligence-db
@@ -29,3 +45,4 @@ services:
 
 volumes:
   postgres_data:
+  transcriber_data:

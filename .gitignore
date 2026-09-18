@@ -5,15 +5,18 @@ build/
 dist/
 wheels/
 *.egg-info
+*.tsbuildinfo
 
 # Virtual environments
 .venv
+node_modules/
 
 # Content files
 videos/
 transcriptions/
 embeddings/
 metadata/
+data/
 
 # Local env
 .env

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
 from faster_whisper import WhisperModel
@@ -12,8 +13,14 @@ from faster_whisper import WhisperModel
 METADATA_KEYS = ("video_id", "title", "duration_seconds", "transcribed_at")
 
 
+@lru_cache(maxsize=2)
+def get_model(model_size: str) -> WhisperModel:
+    """Load each configured model once per process."""
+    return WhisperModel(model_size, device="cpu", compute_type="int8")
+
+
 def transcribe(audio_path: str | Path, model_size: str = "large-v3-turbo"):
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    model = get_model(model_size)
     segments, info = model.transcribe(str(audio_path), beam_size=5)
     return list(segments), info
 
