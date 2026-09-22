@@ -1,77 +1,144 @@
 # Video Intelligence
 
-A small, self-hosted transcription app for Town training media. Phase 1 accepts
-video and audio uploads, transcribes them with faster-whisper, and provides
-copyable transcripts plus JSON, TXT, and SRT downloads.
+Self-hosted transcription for Town training media. The day-one use case is
+simple: run it on the Town server with Docker, upload a recording, download a
+transcript (TXT / JSON / SRT), and put that file somewhere a SharePoint agent
+(or a person) can read it.
 
-The existing chunking, embeddings, Postgres, and OpenWebUI RAG pipeline remain
-in the repository but are not part of the web upload flow yet.
+There’s also a fuller custom RAG path in this repo (chunk → embed → Postgres →
+OpenWebUI) if we ever want answers with timestamp citations instead of leaning
+on Copilot. That path is optional — see below.
 
-## Run locally on macOS
+## What you need day one (transcription)
 
-Requirements:
+On the Town server:
 
-- Python 3.13 and [uv](https://docs.astral.sh/uv/)
-- Node.js 22+
+```bash
+docker compose up --build -d transcriber
+```
 
-Install dependencies:
+Open `http://<server>:8081` (port is `TRANSCRIBER_PORT`, default `8081`).
+
+1. Drop a video or audio file on the page (or use the file picker).
+2. Wait for transcription (first run downloads the Whisper model into the data volume).
+3. Copy the text, or download **TXT**, **JSON**, or **SRT**.
+4. Drop the file into whatever library/folder your SharePoint agent uses.
+
+That’s the whole short-term workflow. No Microsoft Graph app, no database, no
+OpenWebUI required.
+
+### Useful knobs
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TRANSCRIBER_PORT` | `8081` | Host port for the web UI |
+| `WHISPER_MODEL` | `tiny.en` | faster-whisper model (`tiny.en` is fast; bump to `medium.en` / `large-v3` for better accuracy if the box can take it) |
+| `MAX_UPLOAD_BYTES` | `4294967296` | Max upload size (~4 GB) |
+
+Transcript exports and the Whisper model cache live in the `transcriber_data`
+Docker volume. Uploaded media is deleted after processing.
+
+Jobs are processed **one at a time** so a modest server doesn’t melt. Job state
+is in-memory: if you restart the container, the on-screen job list clears, but
+exports already written under the volume are still on disk. Prefer downloading
+when the job finishes.
+
+### API (if you need it)
+
+- `POST /api/jobs` — multipart upload, field name `file`
+- `GET /api/jobs/{id}` — status / transcript when done
+- `GET /api/jobs/{id}/transcript.txt` (also `.json`, `.srt`)
+- `GET /api/health`
+
+### Local macOS dev (optional)
 
 ```bash
 uv sync
 cd frontend && npm install && cd ..
-```
-
-Start the API:
-
-```bash
 uv run uvicorn web_app:app --reload --port 8000
+# other terminal:
+cd frontend && npm run dev
 ```
 
-In another terminal, start the frontend:
+UI: `http://localhost:5173` (Vite proxies `/api` to the backend).
 
-```bash
-cd frontend
-npm run dev
-```
+## Why there’s also a custom DB / OpenWebUI path
 
-Open `http://localhost:5173`. The Vite development server proxies `/api` to
-the API. The first transcription downloads the configured Whisper model.
+Microsoft’s automatic Teams → transcript/summary pipeline has been flaky for us.
+The backup is: **we** transcribe, then either hand the TXT to a SharePoint agent
+or (later) put structured chunks in our own store.
 
-## Run with Docker
+The custom path exists so an AI can answer questions over training videos **with
+timestamp-specific citations** — and, when the video already lives in SharePoint,
+links that jump to that moment (`sharepoint_nav.py`). Example vibe:
 
-```bash
-docker compose up --build transcriber
-```
+> “How do I add an emergency contact?”
+>
+> …answer grounded in the transcript…
+>
+> Sources: *How to Add an Emergency Contact* — 01:12–01:45  
+> (link opens the SharePoint stream player at that time)
 
-Open `http://localhost:8081`. The app is independent from OpenWebUI and can
-run on the same Docker host without sharing a container.
+That’s the kind of thing you don’t reliably get from “Copilot, summarize this
+Teams recording,” and it’s why the pipeline was built custom instead of only
+shipping files to Microsoft.
 
-Configuration:
+### Tradeoffs (read this before diving in)
 
-| Variable | Default | Purpose |
+| Approach | Upside | Cost / pain |
 | --- | --- | --- |
-| `TRANSCRIBER_PORT` | `8081` | Host port for the web app |
-| `WHISPER_MODEL` | `tiny.en` | faster-whisper model |
-| `MAX_UPLOAD_BYTES` | `4294967296` | Maximum upload size |
+| **Download TXT → SharePoint agent** (current short-term) | Simple, works with what we already have | Agent quality depends on how you feed it files; no first-class timestamp UX |
+| **Custom DB + OpenWebUI** (optional in this repo) | Hybrid search, citations, SharePoint deep-links, we control the prompt | You need Postgres, embeddings, and a chat model — either **API tokens** or **hardware to self-host** (Ollama / llama.cpp). More ops. |
+| **Copilot / MS auto transcript** | No extra stack | We’ve seen reliability issues; less control over citations |
 
-Uploaded media is deleted after processing. Transcript exports and the Whisper
-model cache both live in the `transcriber_data` Docker volume.
+You do **not** need the custom path for Craig’s day-one job. It’s here so
+someone can stand it up later if we decide Copilot + SharePoint agents aren’t
+enough.
 
-## API
+### How that pipeline fits together (high level)
 
-- `POST /api/jobs` — multipart upload using the `file` field
-- `GET /api/jobs/{id}` — status and transcript when complete
-- `GET /api/jobs/{id}/transcript.json`
-- `GET /api/jobs/{id}/transcript.txt`
-- `GET /api/jobs/{id}/transcript.srt`
-- `GET /api/health`
+```
+videos/unprocessed/
+    → extract audio
+    → Whisper transcript JSON
+    → chunk + (optional) SharePoint timestamp links
+    → embed (Ollama / compatible API)
+    → Postgres + pgvector
+    → OpenWebUI function/pipe asks DB, answers with citations
+```
 
-Jobs are intentionally processed one at a time so CPU transcription does not
-overload a MacBook Air or the initial Town server. Job state is currently
-in-memory; restarting the app clears the visible job list.
+Entry points if you want to poke at it:
 
-## Existing RAG pipeline
+- `main.py` — folder ingest through chunk/embed
+- `database.py` — sync / ingest / search CLI
+- `openwebui_rag_poc.py` — OpenWebUI pipe
+- `docs/OPENWEBUI.md` — setup details (DB is on host port **5431** in compose)
+- `plan.md` — older aspirational design notes (the web app API in there is not what shipped)
 
-See `docs/OPENWEBUI.md` for the current CLI-based Postgres/pgvector and
-OpenWebUI integration. Wiring successful web jobs into that pipeline is the
-next phase.
+Start only Postgres when experimenting with RAG:
+
+```bash
+docker compose up -d postgres
+```
+
+Wiring completed **web** jobs into this RAG path is still a future step. Today
+the web UI and the CLI RAG pipeline are separate tracks that share transcription
+ideas, not one button.
+
+## Repo map (short)
+
+| Path | Role |
+| --- | --- |
+| `web_app.py`, `frontend/` | Phase 1 upload UI + API |
+| `transcribe.py`, `transcript_exports.py`, `convert.py` | Whisper + TXT/JSON/SRT |
+| `main.py`, `chunk.py`, `embed.py`, `database.py`, `schema.sql` | Optional RAG ingest |
+| `sharepoint_nav.py` | Build “open video at timestamp” URLs (not Graph upload) |
+| `openwebui_rag_poc.py`, `docs/OPENWEBUI.md` | Chat-over-transcripts experiment |
+
+## Smoke check
+
+1. `docker compose up --build -d transcriber`
+2. Hit `/api/health`
+3. Upload a short clip
+4. Download TXT (and optionally JSON/SRT)
+5. Confirm you can open/copy the transcript and drop it where the SharePoint agent expects files
