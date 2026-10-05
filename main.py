@@ -66,7 +66,6 @@ def process_video(
         target_seconds=target_seconds,
         overlap_seconds=overlap_seconds,
         watch_prefix=watch_prefix,
-        for_owui=True,
     )
 
     if move_when_done:

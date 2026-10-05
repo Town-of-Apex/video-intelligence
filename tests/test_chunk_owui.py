@@ -6,6 +6,7 @@ from chunk import (
     build_owui_payload,
     chunkify_segments,
     format_watch_prefix,
+    legacy_chunks_to_owui_payload,
 )
 
 
@@ -103,6 +104,56 @@ def test_owui_payload_shape_matches_canonical_examples(monkeypatch) -> None:
         )
         assert "nav=" in chunk["link"]
         assert "How%20to%20Add%20an%20Emergency%20Contact.webm" in chunk["link"]
+
+
+def test_legacy_chunks_to_owui_preserves_links_and_strips_extras() -> None:
+    legacy = {
+        "video_id": "demo.webm",
+        "title": "Demo Video",
+        "duration_seconds": 90.0,
+        "transcribed_at": "2026-06-12T17:20:13+00:00",
+        "chunk_count": 1,
+        "chunks": [
+            {
+                "chunk_id": 1,
+                "start_time": 42.0,
+                "end_time": 90.0,
+                "segment_ids": [1, 2],
+                "text": "Body text.",
+                "word_count": 2,
+                "link": "https://example.sharepoint.com/preserved-link",
+                "embedding": [0.1, 0.2, 0.3],
+            }
+        ],
+    }
+
+    payload = legacy_chunks_to_owui_payload(legacy, preserve_links=True)
+
+    assert set(payload.keys()) == {
+        "video_id",
+        "title",
+        "total_duration_seconds",
+        "transcribed_at",
+        "chunk_count",
+        "chunks",
+    }
+    assert payload["total_duration_seconds"] == 90.0
+    assert "duration_seconds" not in payload
+    assert payload["chunk_count"] == 1
+
+    chunk = payload["chunks"][0]
+    assert set(chunk.keys()) == {
+        "chunk_id",
+        "start_time",
+        "end_time",
+        "text",
+        "link",
+    }
+    assert chunk["link"] == "https://example.sharepoint.com/preserved-link"
+    assert chunk["text"] == "Body text."
+    assert "embedding" not in chunk
+    assert "segment_ids" not in chunk
+    assert "word_count" not in chunk
 
 
 def test_watch_prefix_opt_in(monkeypatch) -> None:

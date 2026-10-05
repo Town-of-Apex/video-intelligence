@@ -1,19 +1,43 @@
-# Open WebUI — Training Assistant (Knowledge upload)
+# Open WebUI — Training Assistant
 
-Primary product path: transcribe training media → export slim chunk JSON with
-SharePoint timestamp links → upload into Open WebUI Knowledge → chat with a
-Training Assistant model. This repo does **not** run a custom embeddings DB or
-a retrieval service for Open WebUI.
+Staff use the live Training Assistant in Open WebUI. This doc is for
+**maintainers** who process new videos or refresh Knowledge. For a
+non-technical walkthrough, start with the top of [`README.md`](../README.md).
 
-## Day-one flow
+## Live instance (TOA network)
+
+| Item | Value |
+| --- | --- |
+| URL | [http://10.9.81.141:3000](http://10.9.81.141:3000) |
+| Host | Jetson Thor (Town network) |
+| Network | Town firewalled **TOA** network only |
+| Model to select | **Training Assistant** |
+| Underlying LLM | Nemotron (hosted on the Thor) |
+| Knowledge | Training transcript chunks (`*_chunks_for_owui.json`) already loaded for existing videos |
+
+Open WebUI owns embeddings and retrieval. This repo does **not** run a custom
+embeddings DB or a retrieval service for Open WebUI.
+
+## Staff flow (no repo required)
+
+1. Connect to **TOA**.
+2. Open `http://10.9.81.141:3000`.
+3. Choose **Training Assistant**.
+4. Ask a how-to question; follow SharePoint source links into the video.
+
+## Maintainer flow (new or updated videos)
 
 ```
 videos/unprocessed/
     → main.py (extract → Whisper → ~120s chunks + SharePoint links)
-    → transcriptions/chunked/{stem}_chunks_for_owui.json
-    → manual upload into Open WebUI Knowledge
-    → Training Assistant model answers from Knowledge
+    → transcriptions/owui_format/{stem}_chunks_for_owui.json
+    → upload into Open WebUI Knowledge (Training Assistant collection)
+    → answers available at http://10.9.81.141:3000
 ```
+
+Existing media was migrated with `uv run python chunk.py --migrate-legacy`
+(from legacy `transcriptions/chunked/*_chunks.json`, preserving SharePoint
+timestamp links). Only **new** videos need the steps below.
 
 ### 1. Process a video (CLI)
 
@@ -32,22 +56,26 @@ Or chunk an existing transcript:
 
 ```bash
 uv run python chunk.py path/to/foo_transcript.json
-# → transcriptions/chunked/foo_chunks_for_owui.json
+# → transcriptions/owui_format/foo_chunks_for_owui.json
+
+# One-shot: strip legacy transcriptions/chunked/*_chunks.json into owui_format/
+uv run python chunk.py --migrate-legacy
 ```
 
 ### 2. Upload into Open WebUI Knowledge
 
-1. Open Open WebUI → **Workspace → Knowledge** (or Collections).
-2. Create or open a collection used by your Training Assistant model.
-3. Upload the `*_chunks_for_owui.json` file(s).
-4. Attach that Knowledge collection to the Training Assistant model.
+1. On TOA, open [http://10.9.81.141:3000](http://10.9.81.141:3000).
+2. Go to **Workspace → Knowledge** (or Collections).
+3. Open the collection used by **Training Assistant**.
+4. Upload the new `*_chunks_for_owui.json` file(s).
+5. Confirm the Training Assistant model still has that Knowledge collection attached.
 
-Open WebUI owns embeddings and retrieval. Do not point OWUI at a custom
-Postgres schema from this repo (that path was removed).
+Do not point OWUI at a custom Postgres schema from this repo (that path was removed).
 
 ### 3. JSON shape (canonical)
 
-Filename: `{stem}_chunks_for_owui.json`
+Filename: `{stem}_chunks_for_owui.json`  
+Location: `transcriptions/owui_format/`
 
 ```json
 {
@@ -68,7 +96,8 @@ Filename: `{stem}_chunks_for_owui.json`
 }
 ```
 
-No `embedding`, no `segment_ids`. Links come from `sharepoint_nav.py` only.
+No `embedding`, no `segment_ids`. Links come from `sharepoint_nav.py` (or are
+preserved from legacy chunk files during migration).
 
 ## Chunk tuning
 
@@ -95,8 +124,9 @@ Videos must already live at that folder path for timestamp links to open correct
 ## Future (not built yet)
 
 - **Synced folder:** point Open WebUI Knowledge at a watched directory of
-  `*_chunks_for_owui.json` so manual upload is unnecessary. Prefer OWUI’s own
-  sync/folder features if available; do not add a large custom sync service here.
+  `transcriptions/owui_format/*_chunks_for_owui.json` so new videos don’t need a
+  manual upload. Prefer OWUI’s own sync/folder features if available; do not add
+  a large custom sync service here.
 - **Web app fold-in:** upload in the Docker transcriber → auto SharePoint place
   + transcribe + write OWUI JSON into that Knowledge location. Today the web UI
   and `main.py` remain separate tracks.
@@ -108,4 +138,4 @@ docker compose up --build -d
 ```
 
 Opens the upload UI for TXT/JSON/SRT downloads. It does not yet emit
-`*_chunks_for_owui.json`.
+`*_chunks_for_owui.json` or update the Training Assistant Knowledge base.

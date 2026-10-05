@@ -1,11 +1,14 @@
-# Day-one: self-hosted Whisper transcriber (web UI).
+# Optional: self-hosted Whisper transcriber (web UI) for one-off TXT/JSON/SRT.
+# Staff Training Assistant lives in Open WebUI on TOA:
+#   http://10.9.81.141:3000  (Jetson Thor; select model "Training Assistant")
 #
 # Start:  docker compose up --build -d
 # Stop:   docker compose down
 # Reset:  docker compose down -v   (deletes data volumes)
 #
-# Open WebUI Knowledge ingest uses *_chunks_for_owui.json from the CLI
-# pipeline (main.py), not a custom Postgres RAG database.
+# Knowledge ingest for the Training Assistant uses
+# transcriptions/owui_format/*_chunks_for_owui.json from the CLI (main.py),
+# not a custom Postgres RAG database. This compose stack does not host OWUI.
 
 services:
   transcriber:

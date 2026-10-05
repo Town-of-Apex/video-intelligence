@@ -215,6 +215,122 @@ def build_owui_payload(
     }
 
 
+def legacy_chunks_to_owui_payload(
+    legacy: dict,
+    *,
+    preserve_links: bool = True,
+    watch_prefix: bool = False,
+) -> dict:
+    """
+    Convert a legacy ``*_chunks.json`` payload (embeddings, segment_ids, etc.)
+    into the slim Open WebUI Knowledge shape.
+
+    When ``preserve_links`` is True (default), existing SharePoint ``link``
+    values are kept; missing links are regenerated.
+    """
+    from sharepoint_nav import build_video_timestamp_url
+
+    video_id = legacy["video_id"]
+    title = legacy.get("title") or Path(str(video_id)).stem
+    duration = legacy.get("total_duration_seconds")
+    if duration is None:
+        duration = legacy.get("duration_seconds")
+
+    owui_chunks = []
+    for chunk in legacy.get("chunks", []):
+        link = chunk.get("link") if preserve_links else None
+        if not link:
+            link = build_video_timestamp_url(video_id, float(chunk["start_time"]))
+
+        text = chunk["text"]
+        if watch_prefix and link:
+            prefix = format_watch_prefix(
+                title,
+                link,
+                float(chunk["start_time"]),
+                float(chunk["end_time"]),
+            )
+            text = f"{prefix}\n\n{text}"
+
+        owui_chunks.append(
+            {
+                "chunk_id": chunk["chunk_id"],
+                "start_time": chunk["start_time"],
+                "end_time": chunk["end_time"],
+                "text": text,
+                "link": link,
+            }
+        )
+
+    return {
+        "video_id": video_id,
+        "title": legacy.get("title"),
+        "total_duration_seconds": duration,
+        "transcribed_at": legacy.get("transcribed_at"),
+        "chunk_count": len(owui_chunks),
+        "chunks": owui_chunks,
+    }
+
+
+def stem_from_chunks_path(chunks_path: Path) -> str:
+    stem = chunks_path.stem
+    if stem.endswith("_chunks"):
+        return stem[: -len("_chunks")]
+    return stem
+
+
+def migrate_legacy_chunk_file(
+    source_path: str | Path,
+    output_path: str | Path | None = None,
+    *,
+    preserve_links: bool = True,
+    watch_prefix: bool = False,
+) -> Path:
+    """Strip a legacy chunks JSON file into ``transcriptions/owui_format/``."""
+    source_path = Path(source_path)
+    if output_path is None:
+        from paths import owui_chunks_path
+
+        output_path = owui_chunks_path(stem_from_chunks_path(source_path))
+    else:
+        output_path = Path(output_path)
+
+    with source_path.open(encoding="utf-8") as handle:
+        legacy = json.load(handle)
+
+    payload = legacy_chunks_to_owui_payload(
+        legacy,
+        preserve_links=preserve_links,
+        watch_prefix=watch_prefix,
+    )
+    return save_owui_chunks(payload, output_path)
+
+
+def migrate_legacy_chunked_dir(
+    source_dir: str | Path | None = None,
+    *,
+    preserve_links: bool = True,
+    watch_prefix: bool = False,
+) -> list[Path]:
+    """Migrate all ``*_chunks.json`` files from the legacy chunked directory."""
+    from paths import CHUNKED_DIR, ensure_media_dirs
+
+    ensure_media_dirs()
+    source_dir = Path(source_dir) if source_dir is not None else CHUNKED_DIR
+    written: list[Path] = []
+
+    for source in sorted(source_dir.glob("*_chunks.json")):
+        saved = migrate_legacy_chunk_file(
+            source,
+            preserve_links=preserve_links,
+            watch_prefix=watch_prefix,
+        )
+        written.append(saved)
+        print(f"Migrated {source.name} -> {saved}")
+
+    return written
+
+
 def save_owui_chunks(payload: dict, output_path: str | Path) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -238,14 +354,13 @@ def main(
     target_seconds: float | None = None,
     overlap_seconds: float | None = None,
     watch_prefix: bool = False,
-    for_owui: bool = True,
 ) -> Path:
     transcript_path = Path(transcript_path)
     if output_path is None:
-        from paths import chunks_path, owui_chunks_path
+        from paths import owui_chunks_path
 
         stem = stem_from_transcript_path(transcript_path)
-        output_path = owui_chunks_path(stem) if for_owui else chunks_path(stem)
+        output_path = owui_chunks_path(stem)
     else:
         output_path = Path(output_path)
 
@@ -261,11 +376,8 @@ def main(
         overlap_seconds=overlap_seconds,
     )
 
-    if for_owui:
-        payload = build_owui_payload(chunks, metadata, watch_prefix=watch_prefix)
-        saved = save_owui_chunks(payload, output_path)
-    else:
-        saved = save_chunks(chunks, output_path, metadata)
+    payload = build_owui_payload(chunks, metadata, watch_prefix=watch_prefix)
+    saved = save_owui_chunks(payload, output_path)
 
     print(
         f"Created {len(chunks)} chunks "
@@ -323,13 +435,24 @@ if __name__ == "__main__":
         help="Prefix each chunk text with a Markdown Watch link (still keeps link field)",
     )
     parser.add_argument(
-        "--internal",
+        "--migrate-legacy",
         action="store_true",
-        help="Write internal *_chunks.json (with segment_ids) instead of *_chunks_for_owui.json",
+        help=(
+            "Migrate transcriptions/chunked/*_chunks.json into "
+            "transcriptions/owui_format/ (preserve SharePoint links, strip embeddings)"
+        ),
     )
     args = parser.parse_args()
 
     ensure_media_dirs()
+
+    if args.migrate_legacy:
+        written = migrate_legacy_chunked_dir(watch_prefix=args.watch_prefix)
+        if not written:
+            parser.error("No *_chunks.json files found in transcriptions/chunked/")
+        print(f"\nMigrated {len(written)} file(s) into transcriptions/owui_format/")
+        raise SystemExit(0)
+
     transcript = args.transcript
     if transcript is None:
         candidates = sorted(TRANSCRIPTS_DIR.glob("*_transcript.json"))
@@ -343,5 +466,4 @@ if __name__ == "__main__":
         target_seconds=args.target_seconds,
         overlap_seconds=args.overlap_seconds,
         watch_prefix=args.watch_prefix,
-        for_owui=not args.internal,
     )

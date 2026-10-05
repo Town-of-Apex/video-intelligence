@@ -10,6 +10,9 @@ VIDEOS_UNPROCESSED = PROJECT_ROOT / "videos" / "unprocessed"
 VIDEOS_PROCESSED = PROJECT_ROOT / "videos" / "processed"
 AUDIO_DIR = PROJECT_ROOT / "audio"
 TRANSCRIPTS_DIR = PROJECT_ROOT / "transcriptions" / "transcripts"
+OWUI_FORMAT_DIR = PROJECT_ROOT / "transcriptions" / "owui_format"
+
+# Legacy location (read-only migration source; pipeline no longer writes here).
 CHUNKED_DIR = PROJECT_ROOT / "transcriptions" / "chunked"
 
 # Back-compat alias for older imports / docs.
@@ -22,7 +25,7 @@ def ensure_media_dirs() -> None:
         VIDEOS_PROCESSED,
         AUDIO_DIR,
         TRANSCRIPTS_DIR,
-        CHUNKED_DIR,
+        OWUI_FORMAT_DIR,
     ):
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -35,14 +38,14 @@ def transcript_path(stem: str) -> Path:
     return TRANSCRIPTS_DIR / f"{stem}_transcript.json"
 
 
-def chunks_path(stem: str) -> Path:
-    """Internal chunk JSON (segment_ids / word_count; no embeddings)."""
-    return CHUNKED_DIR / f"{stem}_chunks.json"
-
-
 def owui_chunks_path(stem: str) -> Path:
     """Open WebUI Knowledge export: ``{stem}_chunks_for_owui.json``."""
-    return CHUNKED_DIR / f"{stem}_chunks_for_owui.json"
+    return OWUI_FORMAT_DIR / f"{stem}_chunks_for_owui.json"
+
+
+def chunks_path(stem: str) -> Path:
+    """Deprecated: legacy internal chunk JSON under ``transcriptions/chunked/``."""
+    return CHUNKED_DIR / f"{stem}_chunks.json"
 
 
 def embeddings_path(stem: str) -> Path:
