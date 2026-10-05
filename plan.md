@@ -1,5 +1,9 @@
 # Video Training Knowledge Assistant
 
+> **Historical.** This document describes the earlier custom Postgres + embeddings
+> RAG design. The shipped path is now: `main.py` → `*_chunks_for_owui.json` →
+> Open WebUI Knowledge. See `README.md` and `docs/OPENWEBUI.md`.
+
 ## System Design Document (Prototype v1)
 
 ### Purpose

@@ -1,49 +1,62 @@
 # Video Intelligence
 
-Self-hosted transcription for Town training media. The day-one use case is
-simple: run it on the Town server with Docker, upload a recording, download a
-transcript (TXT / JSON / SRT), and put that file somewhere a SharePoint agent
-(or a person) can read it.
+Self-hosted transcription for Town training media, plus an Open WebUI–ready
+chunk export with SharePoint timestamp links.
 
-There’s also a fuller custom RAG path in this repo (chunk → embed → Postgres →
-OpenWebUI) if we ever want answers with timestamp citations instead of leaning
-on Copilot. That path is optional — see below.
+## Day-one product path
 
-## What you need day one (transcription)
-
-On the Town server:
+```
+videos/unprocessed/
+    → main.py
+    → transcriptions/chunked/{stem}_chunks_for_owui.json
+    → manual upload into Open WebUI Knowledge
+    → Training Assistant model
+```
 
 ```bash
-docker compose up --build -d transcriber
+uv sync
+# Drop videos into videos/unprocessed/
+uv run python main.py
+```
+
+Each run writes a slim JSON file (no embeddings) with ~120s transcript windows
+and a SharePoint stream URL per chunk. Upload that file into Open WebUI
+Knowledge. Details: [`docs/OPENWEBUI.md`](docs/OPENWEBUI.md).
+
+### Useful knobs
+
+| Variable / flag | Default | Purpose |
+| --- | --- | --- |
+| `CHUNK_TARGET_SECONDS` / `--target-seconds` | `120` | Chunk window length |
+| `CHUNK_OVERLAP_SECONDS` / `--overlap-seconds` | `15` | Overlap between windows |
+| `--watch-prefix` | off | Prefix chunk text with a Markdown Watch link |
+| `SHAREPOINT_*` | see `.env.example` | Stream deep-link location |
+
+## Manual transcriber (Docker web UI)
+
+Separate track for one-off uploads → TXT / JSON / SRT downloads (no OWUI
+chunk export yet).
+
+```bash
+docker compose up --build -d
 ```
 
 Open `http://<server>:8081` (port is `TRANSCRIBER_PORT`, default `8081`).
 
-1. Drop a video or audio file on the page (or use the file picker).
-2. Wait for transcription (first run downloads the Whisper model into the data volume).
+1. Drop a video or audio file on the page.
+2. Wait for transcription.
 3. Copy the text, or download **TXT**, **JSON**, or **SRT**.
-4. Drop the file into whatever library/folder your SharePoint agent uses.
-
-That’s the whole short-term workflow. No Microsoft Graph app, no database, no
-OpenWebUI required.
-
-### Useful knobs
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TRANSCRIBER_PORT` | `8081` | Host port for the web UI |
-| `WHISPER_MODEL` | `tiny.en` | faster-whisper model (`tiny.en` is fast; bump to `medium.en` / `large-v3` for better accuracy if the box can take it) |
+| `WHISPER_MODEL` | `tiny.en` | faster-whisper model |
 | `MAX_UPLOAD_BYTES` | `4294967296` | Max upload size (~4 GB) |
 
-Transcript exports and the Whisper model cache live in the `transcriber_data`
-Docker volume. Uploaded media is deleted after processing.
+Jobs are processed **one at a time**. Uploaded media is deleted after
+processing. Exports and the Whisper cache live in the `transcriber_data` volume.
 
-Jobs are processed **one at a time** so a modest server doesn’t melt. Job state
-is in-memory: if you restart the container, the on-screen job list clears, but
-exports already written under the volume are still on disk. Prefer downloading
-when the job finishes.
-
-### API (if you need it)
+### API
 
 - `POST /api/jobs` — multipart upload, field name `file`
 - `GET /api/jobs/{id}` — status / transcript when done
@@ -62,83 +75,59 @@ cd frontend && npm run dev
 
 UI: `http://localhost:5173` (Vite proxies `/api` to the backend).
 
-## Why there’s also a custom DB / OpenWebUI path
+## Why SharePoint links + Open WebUI
 
-Microsoft’s automatic Teams → transcript/summary pipeline has been flaky for us.
-The backup is: **we** transcribe, then either hand the TXT to a SharePoint agent
-or (later) put structured chunks in our own store.
+Training answers should cite the moment in the video. When the file already
+lives in SharePoint, each chunk carries a stream URL that opens at that time
+(`sharepoint_nav.py`). Open WebUI stores and retrieves the JSON; this repo does
+not run a custom embeddings database or a retrieval service OWUI has to call.
 
-The custom path exists so an AI can answer questions over training videos **with
-timestamp-specific citations** — and, when the video already lives in SharePoint,
-links that jump to that moment (`sharepoint_nav.py`). Example vibe:
+Example vibe:
 
 > “How do I add an emergency contact?”
 >
 > …answer grounded in the transcript…
 >
-> Sources: *How to Add an Emergency Contact* — 01:12–01:45  
-> (link opens the SharePoint stream player at that time)
+> Sources: *How to Add an Emergency Contact* — with a link that opens the
+> SharePoint player at that timestamp.
 
-That’s the kind of thing you don’t reliably get from “Copilot, summarize this
-Teams recording,” and it’s why the pipeline was built custom instead of only
-shipping files to Microsoft.
-
-### Tradeoffs (read this before diving in)
+### Tradeoffs
 
 | Approach | Upside | Cost / pain |
 | --- | --- | --- |
-| **Download TXT → SharePoint agent** (current short-term) | Simple, works with what we already have | Agent quality depends on how you feed it files; no first-class timestamp UX |
-| **Custom DB + OpenWebUI** (optional in this repo) | Hybrid search, citations, SharePoint deep-links, we control the prompt | You need Postgres, embeddings, and a chat model — either **API tokens** or **hardware to self-host** (Ollama / llama.cpp). More ops. |
-| **Copilot / MS auto transcript** | No extra stack | We’ve seen reliability issues; less control over citations |
+| **`main.py` → OWUI Knowledge** (primary) | Timestamp links, we control chunking, OWUI owns RAG | Manual Knowledge upload for PoC |
+| **Docker web UI → TXT** | Fast one-off transcripts | No first-class timestamp UX |
+| **Copilot / MS auto transcript** | No extra stack | Less control over citations |
 
-You do **not** need the custom path for Craig’s day-one job. It’s here so
-someone can stand it up later if we decide Copilot + SharePoint agents aren’t
-enough.
+### Future
 
-### How that pipeline fits together (high level)
+- Point Open WebUI Knowledge at a **synced folder** of `*_chunks_for_owui.json`
+  (prefer OWUI’s own folder sync if available; no big custom sync system here).
+- Fold the CLI into the Docker web app: upload → place on SharePoint →
+  transcribe → write OWUI JSON into that Knowledge location. Today `main.py`
+  and the web UI remain separate.
 
-```
-videos/unprocessed/
-    → extract audio
-    → Whisper transcript JSON
-    → chunk + (optional) SharePoint timestamp links
-    → embed (Ollama / compatible API)
-    → Postgres + pgvector
-    → OpenWebUI function/pipe asks DB, answers with citations
-```
-
-Entry points if you want to poke at it:
-
-- `main.py` — folder ingest through chunk/embed
-- `database.py` — sync / ingest / search CLI
-- `openwebui_rag_poc.py` — OpenWebUI pipe
-- `docs/OPENWEBUI.md` — setup details (DB is on host port **5431** in compose)
-- `plan.md` — older aspirational design notes (the web app API in there is not what shipped)
-
-Start only Postgres when experimenting with RAG:
-
-```bash
-docker compose up -d postgres
-```
-
-Wiring completed **web** jobs into this RAG path is still a future step. Today
-the web UI and the CLI RAG pipeline are separate tracks that share transcription
-ideas, not one button.
-
-## Repo map (short)
+## Repo map
 
 | Path | Role |
 | --- | --- |
-| `web_app.py`, `frontend/` | Phase 1 upload UI + API |
+| `main.py`, `chunk.py`, `sharepoint_nav.py` | Primary: folder ingest → OWUI JSON |
+| `web_app.py`, `frontend/` | Manual upload UI + API |
 | `transcribe.py`, `transcript_exports.py`, `convert.py` | Whisper + TXT/JSON/SRT |
-| `main.py`, `chunk.py`, `embed.py`, `database.py`, `schema.sql` | Optional RAG ingest |
-| `sharepoint_nav.py` | Build “open video at timestamp” URLs (not Graph upload) |
-| `openwebui_rag_poc.py`, `docs/OPENWEBUI.md` | Chat-over-transcripts experiment |
+| `docs/OPENWEBUI.md` | Knowledge ingest steps |
+| `example_chunks_for_owui.json` | Canonical export shape |
 
 ## Smoke check
 
-1. `docker compose up --build -d transcriber`
+**OWUI export**
+
+1. Put a short clip in `videos/unprocessed/`
+2. `uv run python main.py --no-move`
+3. Confirm `transcriptions/chunked/*_chunks_for_owui.json` has `link` fields and no embeddings
+4. Upload that file into Open WebUI Knowledge
+
+**Web UI**
+
+1. `docker compose up --build -d`
 2. Hit `/api/health`
-3. Upload a short clip
-4. Download TXT (and optionally JSON/SRT)
-5. Confirm you can open/copy the transcript and drop it where the SharePoint agent expects files
+3. Upload a short clip and download TXT

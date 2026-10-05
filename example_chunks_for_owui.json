@@ -1,7 +1,7 @@
 {
-  "video_id": "test-video-001",
+  "video_id": "test-video-001.webm",
   "title": "Test Training Video",
-  "duration_seconds": 30,
+  "total_duration_seconds": 30,
   "transcribed_at": "2026-06-02T12:00:00",
   "chunk_count": 1,
   "chunks": [
@@ -9,10 +9,8 @@
       "chunk_id": 1,
       "start_time": 0.0,
       "end_time": 30.0,
-      "segment_ids": [1, 2, 3],
       "text": "This is the first segment of the test training video. This is the second segment of the test training video. This is the third segment of the test training video.",
-      "word_count": 30,
-      "embedding": [0.1, 0.2, 0.3]
+      "link": "https://apexncorg.sharepoint.com/sites/TOAInnovations/_layouts/15/stream.aspx?id=%2Fsites%2FTOAInnovations%2FShared%20Documents%2FProject%20Resources%2FTraining%20Intelligence%2FVideos%2Ftest-video-001.webm&nav=eyJwbGF5YmFja09wdGlvbnMiOnsic3RhcnRUaW1lSW5TZWNvbmRzIjowLjB9fQ%3D%3D"
     }
   ]
 }

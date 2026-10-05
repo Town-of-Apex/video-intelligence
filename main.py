@@ -1,4 +1,4 @@
-"""Bulk pipeline: unprocessed videos -> transcripts -> embedded chunks -> processed."""
+"""Bulk pipeline: unprocessed videos -> transcripts -> OWUI chunk JSON -> processed."""
 
 from __future__ import annotations
 
@@ -11,16 +11,14 @@ from paths import (
     VIDEOS_PROCESSED,
     VIDEOS_UNPROCESSED,
     audio_path,
-    embeddings_path,
     ensure_media_dirs,
+    owui_chunks_path,
     transcript_path,
 )
 
 import chunk
 import convert
-import embed
 import transcribe
-import sharepoint_nav
 from env_config import load_env_file
 
 load_env_file()
@@ -35,16 +33,17 @@ def process_video(
     *,
     model_size: str = "tiny.en",
     move_when_done: bool = True,
-    target_words: int | None = None,
-    overlap_words: int | None = None,
+    target_seconds: float | None = None,
+    overlap_seconds: float | None = None,
+    watch_prefix: bool = False,
 ) -> dict[str, Path]:
-    """Run extract -> transcribe -> chunk -> embed for one video file."""
+    """Run extract -> transcribe -> chunk -> OWUI export for one video file."""
     stem = video_path.stem
     artifacts = {
         "video": video_path,
         "audio": audio_path(stem),
         "transcript": transcript_path(stem),
-        "embeddings": embeddings_path(stem),
+        "owui_chunks": owui_chunks_path(stem),
     }
 
     print(f"\n=== Processing {video_path.name} (video_id={stem!r}) ===")
@@ -60,19 +59,15 @@ def process_video(
         output_path=artifacts["transcript"],
     )
 
-    print("Chunking...")
-    chunk_path = chunk.main(
+    print("Chunking + OWUI export (SharePoint timestamp links)...")
+    chunk.main(
         artifacts["transcript"],
-        artifacts["embeddings"],
-        target_words=target_words,
-        overlap_words=overlap_words,
+        artifacts["owui_chunks"],
+        target_seconds=target_seconds,
+        overlap_seconds=overlap_seconds,
+        watch_prefix=watch_prefix,
+        for_owui=True,
     )
-
-    print("Adding nav to chunks...")
-    sharepoint_nav.add_nav_to_chunks(chunk_path)
-
-    print("Manual embedding of chunks...")
-    embed.embed_chunks(artifacts["embeddings"])
 
     if move_when_done:
         destination = VIDEOS_PROCESSED / video_path.name
@@ -81,14 +76,16 @@ def process_video(
         artifacts["video"] = destination
 
     print(f"Done: {stem}")
+    print(f"  Upload to Open WebUI Knowledge: {artifacts['owui_chunks']}")
     return artifacts
 
 
 def process_all(
     *,
     model_size: str = "tiny.en",
-    target_words: int | None = None,
-    overlap_words: int | None = None,
+    target_seconds: float | None = None,
+    overlap_seconds: float | None = None,
+    watch_prefix: bool = False,
 ) -> int:
     ensure_media_dirs()
     videos = list_unprocessed_videos()
@@ -104,8 +101,9 @@ def process_all(
             process_video(
                 video,
                 model_size=model_size,
-                target_words=target_words,
-                overlap_words=overlap_words,
+                target_seconds=target_seconds,
+                overlap_seconds=overlap_seconds,
+                watch_prefix=watch_prefix,
             )
         except Exception as exc:
             print(f"Failed {video.name}: {exc}", file=sys.stderr)
@@ -138,16 +136,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Leave the source video in videos/unprocessed/ after processing",
     )
     parser.add_argument(
-        "--target-words",
-        type=int,
+        "--target-seconds",
+        type=float,
         default=None,
-        help="Words per transcript chunk (default: 200, env: CHUNK_TARGET_WORDS)",
+        help=(
+            f"Seconds per transcript chunk "
+            f"(default: {chunk.DEFAULT_TARGET_SECONDS:g}, env: CHUNK_TARGET_SECONDS)"
+        ),
     )
     parser.add_argument(
-        "--overlap-words",
-        type=int,
+        "--overlap-seconds",
+        type=float,
         default=None,
-        help="Word overlap between chunks (default: 50, env: CHUNK_OVERLAP_WORDS)",
+        help=(
+            f"Second overlap between chunks "
+            f"(default: {chunk.DEFAULT_OVERLAP_SECONDS:g}, env: CHUNK_OVERLAP_SECONDS)"
+        ),
+    )
+    parser.add_argument(
+        "--watch-prefix",
+        action="store_true",
+        help="Prefix each chunk text with a Markdown Watch link (still keeps link field)",
     )
     return parser
 
@@ -168,8 +177,9 @@ def main(argv: list[str] | None = None) -> int:
                 video,
                 model_size=args.model_size,
                 move_when_done=not args.no_move,
-                target_words=args.target_words,
-                overlap_words=args.overlap_words,
+                target_seconds=args.target_seconds,
+                overlap_seconds=args.overlap_seconds,
+                watch_prefix=args.watch_prefix,
             )
         except Exception as exc:
             print(f"Failed: {exc}", file=sys.stderr)
@@ -178,8 +188,9 @@ def main(argv: list[str] | None = None) -> int:
 
     return process_all(
         model_size=args.model_size,
-        target_words=args.target_words,
-        overlap_words=args.overlap_words,
+        target_seconds=args.target_seconds,
+        overlap_seconds=args.overlap_seconds,
+        watch_prefix=args.watch_prefix,
     )
 
 

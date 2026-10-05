@@ -7,29 +7,6 @@ import json
 import os
 import urllib.parse
 
-# --- SharePoint location (override via env for dev / prod) ---
-
-SHAREPOINT_HOST = os.environ.get("SHAREPOINT_HOST", "apexncorg.sharepoint.com")
-
-# Site collection name as it appears in /sites/{name}/...
-SHAREPOINT_SITE_NAME = os.environ.get("SHAREPOINT_SITE_NAME", "TOAInnovations")
-
-# Document library and folders under the site (no leading or trailing slashes).
-# Parsed from:
-# .../Shared Documents/Project Resources/Training Intelligence/Videos
-SHAREPOINT_DOCUMENT_LIBRARY = os.environ.get(
-    "SHAREPOINT_DOCUMENT_LIBRARY", "Shared Documents"
-)
-SHAREPOINT_VIDEO_FOLDER_SEGMENTS: tuple[str, ...] = tuple(
-    filter(
-        None,
-        os.environ.get(
-            "SHAREPOINT_VIDEO_FOLDER",
-            "Project Resources/Training Intelligence/Videos",
-        ).split("/"),
-    )
-)
-
 # stream.aspx lives under each site’s _layouts path.
 STREAM_LAYOUT_PATH = "_layouts/15/stream.aspx"
 
@@ -43,6 +20,25 @@ SHAREPOINT_VIDEOS_FOLDER_VIEW_URL = (
 )
 
 
+def _sharepoint_config() -> tuple[str, str, str, tuple[str, ...]]:
+    """Resolve SharePoint location from env (override for dev / prod)."""
+    host = os.environ.get("SHAREPOINT_HOST", "apexncorg.sharepoint.com")
+    site_name = os.environ.get("SHAREPOINT_SITE_NAME", "TOAInnovations")
+    document_library = os.environ.get(
+        "SHAREPOINT_DOCUMENT_LIBRARY", "Shared Documents"
+    )
+    folder_segments = tuple(
+        filter(
+            None,
+            os.environ.get(
+                "SHAREPOINT_VIDEO_FOLDER",
+                "Project Resources/Training Intelligence/Videos",
+            ).split("/"),
+        )
+    )
+    return host, site_name, document_library, folder_segments
+
+
 def _server_relative_video_path(video_id: str) -> str:
     """
     Full server-relative path to a file in the videos folder.
@@ -52,11 +48,12 @@ def _server_relative_video_path(video_id: str) -> str:
     if not video_id or video_id.strip() != video_id:
         raise ValueError("video_id must be a non-empty filename (including extension).")
 
+    _, site_name, document_library, folder_segments = _sharepoint_config()
     parts = (
         "sites",
-        SHAREPOINT_SITE_NAME,
-        SHAREPOINT_DOCUMENT_LIBRARY,
-        *SHAREPOINT_VIDEO_FOLDER_SEGMENTS,
+        site_name,
+        document_library,
+        *folder_segments,
         video_id,
     )
     return "/" + "/".join(parts)
@@ -89,12 +86,13 @@ def build_video_timestamp_url(video_id: str, start_time_seconds: float) -> str:
     start_time_seconds:
         Playback start offset in seconds (same unit as chunk ``start_time``).
     """
+    host, site_name, _, _ = _sharepoint_config()
     file_path = _server_relative_video_path(video_id)
     encoded_id = urllib.parse.quote(file_path, safe="")
     encoded_nav = _encode_nav(start_time_seconds)
 
     return (
-        f"https://{SHAREPOINT_HOST}/sites/{SHAREPOINT_SITE_NAME}/"
+        f"https://{host}/sites/{site_name}/"
         f"{STREAM_LAYOUT_PATH}?id={encoded_id}&nav={encoded_nav}"
     )
 
